@@ -1,0 +1,47 @@
+{
+  "name": "zrx-staking-rebalance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Terminal utility to reallocate ZRX stake across specific staking pools and optionally migrate to wZRX governance.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && echo 'Typecheck OK'",
+    "cli": "tsx src/cli.ts",
+    "test": "vitest run tests/unit",
+    "test:foundry": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix"
+  },
+  "dependencies": {
+    "@safe-global/api-kit": "^2.5.2",
+    "@safe-global/protocol-kit": "^5.0.2",
+    "@safe-global/types-kit": "^1.0.0",
+    "chalk": "^5.3.0",
+    "dotenv": "^16.4.5",
+    "inquirer": "^11.0.2",
+    "tslib": "^2.8.1",
+    "viem": "^2.21.0",
+    "yargs": "^17.7.2"
+  },
+  "optionalDependencies": {
+    "@ledgerhq/hw-app-eth": "^6.41.1",
+    "@ledgerhq/hw-transport-node-hid": "^6.29.5",
+    "@trezor/connect": "^9.4.0",
+    "inquirer": "^11.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^26.0.1",
+    "@types/yargs": "^17.0.33",
+    "eslint": "^10.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.62.0",
+    "vitest": "^2.0.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,51 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-unit:
+    runs-on: ubuntu-latest
+    outputs:
+      has-rpc: ${{ steps.check-rpc.outputs.defined }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn build
+      - run: yarn lint
+      - run: yarn test
+      - id: check-rpc
+        run: |
+          if [ -n "${{ secrets.RPC_URL }}" ]; then
+            echo "defined=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "defined=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  fork:
+    runs-on: ubuntu-latest
+    needs: lint-and-unit
+    if: needs.lint-and-unit.outputs.has-rpc == 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn build
+        env:
+          RPC_URL: ${{ secrets.RPC_URL }}
+      - run: yarn test
+        env:
+          RPC_URL: ${{ secrets.RPC_URL }}
