@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   encodeBatchExecute,
   encodeDelegateToPool,
+  encodeEndEpoch,
   encodeEqualDelegation,
   encodeMoveStake,
   encodeStake,
@@ -61,5 +62,11 @@ describe('staking calldata', () => {
     const decoded = decodeFunctionData({ abi: STAKING_PROXY_ABI, data });
     expect(decoded.functionName).toBe('batchExecute');
     expect(decoded.args?.[0]).toEqual(calls);
+  });
+
+  it('encodes endEpoch', () => {
+    const data = encodeEndEpoch();
+    const decoded = decodeFunctionData({ abi: STAKING_PROXY_ABI, data });
+    expect(decoded.functionName).toBe('endEpoch');
   });
 });

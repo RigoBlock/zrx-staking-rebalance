@@ -13,7 +13,8 @@ import type { Address, Hex, PublicClient } from 'viem';
 import type { OperationPlan } from '../operations/types.js';
 import { initSafeKitBundle, type SafeKitBundle } from './kit.js';
 import { decodeSafeTransactionData } from './decoder.js';
-import { printTxPreview, success, warning } from '../utils/format.js';
+import { info, printTxPreview, success, warning } from '../utils/format.js';
+import { withRetry } from '../ethereum/retry.js';
 
 export interface ProposedSafeTransaction {
   safeTxHash: Hex;
@@ -50,6 +51,10 @@ export async function simulateSafePlans(
   plans: OperationPlan[]
 ): Promise<void> {
   for (const plan of plans) {
+    if (plan.skipSimulation) {
+      info(`Skipping simulation for "${plan.description}" (depends on earlier bundle actions).`);
+      continue;
+    }
     try {
       await publicClient.call({
         account: safeAddress,
@@ -81,14 +86,18 @@ export async function proposeSafeTransaction(
   )) as Hex;
   const senderAddress = (await bundle.protocolKit.getAddress()) as Address;
 
-  await bundle.apiKit.proposeTransaction({
-    safeAddress,
-    safeTransactionData: signedTransaction.data,
-    safeTxHash,
-    senderAddress,
-    senderSignature: signedTransaction.encodedSignatures(),
-    origin,
-  });
+  await withRetry(
+    () =>
+      bundle.apiKit.proposeTransaction({
+        safeAddress,
+        safeTransactionData: signedTransaction.data,
+        safeTxHash,
+        senderAddress,
+        senderSignature: signedTransaction.encodedSignatures(),
+        origin,
+      }),
+    { label: 'Safe API proposeTransaction' }
+  );
 
   return { safeTxHash, safeAddress, senderAddress };
 }
@@ -99,12 +108,17 @@ export async function listPendingSafeTransactions(
   safeAddress: Address
 ) {
   const nonce = await bundle.protocolKit.getNonce();
-  return bundle.apiKit.getPendingTransactions(safeAddress, nonce);
+  return withRetry(
+    () => bundle.apiKit.getPendingTransactions(safeAddress, nonce),
+    { label: 'Safe API getPendingTransactions' }
+  );
 }
 
 /** Fetch a single Safe transaction from the Transaction Service. */
 export async function getSafeTransaction(bundle: SafeKitBundle, safeTxHash: Hex) {
-  return bundle.apiKit.getTransaction(safeTxHash);
+  return withRetry(() => bundle.apiKit.getTransaction(safeTxHash), {
+    label: 'Safe API getTransaction',
+  });
 }
 
 /** Sign a pending Safe transaction and push the signature to the service. */
@@ -113,7 +127,10 @@ export async function confirmSafeTransaction(
   safeTxHash: Hex
 ): Promise<void> {
   const signature = await bundle.protocolKit.signHash(safeTxHash);
-  await bundle.apiKit.confirmTransaction(safeTxHash, signature.data);
+  await withRetry(
+    () => bundle.apiKit.confirmTransaction(safeTxHash, signature.data),
+    { label: 'Safe API confirmTransaction' }
+  );
 }
 
 /**
@@ -126,7 +143,10 @@ export async function executeSafeTransaction(
   safeTxHash: Hex,
   safeAddress: Address
 ) {
-  const transaction = await bundle.apiKit.getTransaction(safeTxHash);
+  const transaction = await withRetry(
+    () => bundle.apiKit.getTransaction(safeTxHash),
+    { label: 'Safe API getTransaction' }
+  );
 
   printTxPreview('Safe transaction to execute', {
     safe: safeAddress,

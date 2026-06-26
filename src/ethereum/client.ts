@@ -18,15 +18,7 @@ import {
 import { mainnet } from 'viem/chains';
 
 const RPC_RETRY_COUNT = 5;
-const RPC_INITIAL_RETRY_DELAY_MS = 250;
-const RPC_MAX_RETRY_DELAY_MS = 30_000;
-
-function rpcRetryDelay({ attempt }: { attempt: number }): number {
-  const exponential = RPC_INITIAL_RETRY_DELAY_MS * 2 ** (attempt - 1);
-  const capped = Math.min(exponential, RPC_MAX_RETRY_DELAY_MS);
-  const jitter = Math.random() * capped * 0.5;
-  return Math.min(capped + jitter, RPC_MAX_RETRY_DELAY_MS);
-}
+const RPC_RETRY_DELAY_MS = 250;
 
 export function getChain(chainId: number): Chain {
   if (chainId === 1) return mainnet;
@@ -39,7 +31,7 @@ export function createPublicClientFromUrl(rpcUrl: string): PublicClient {
     transport: http(rpcUrl, {
       timeout: 60_000,
       retryCount: RPC_RETRY_COUNT,
-      retryDelay: rpcRetryDelay,
+      retryDelay: RPC_RETRY_DELAY_MS,
     }),
   }) as PublicClient;
 }
@@ -53,7 +45,7 @@ export function createWalletClientForAccount(
     transport: http(rpcUrl, {
       timeout: 60_000,
       retryCount: RPC_RETRY_COUNT,
-      retryDelay: rpcRetryDelay,
+      retryDelay: RPC_RETRY_DELAY_MS,
     }),
     account,
   }) as WalletClient;

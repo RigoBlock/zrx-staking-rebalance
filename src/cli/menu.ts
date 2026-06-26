@@ -22,8 +22,10 @@ const OPERATIONS = [
   { name: 'Redelegate (undelegate all + delegate equally)', value: 'redelegate' },
   { name: 'Stake and delegate equally', value: 'stake-and-delegate' },
   { name: 'Unstake undelegated ZRX', value: 'unstake' },
-  { name: 'Wrap ZRX to wZRX governance', value: 'wrap-governance' },
-  { name: 'Migrate undelegated stake to wZRX governance', value: 'migrate-governance' },
+  { name: 'Full legacy-stake migration to wZRX governance', value: 'wrap-governance' },
+  { name: 'Wrap liquid ZRX to wZRX governance', value: 'wrap-governance-liquid' },
+  { name: 'Propose old-treasury migration', value: 'treasury-migrate-propose' },
+  { name: 'Execute old-treasury migration proposal', value: 'treasury-migrate-execute' },
 ];
 
 export async function runInteractiveMenu(): Promise<MenuResult> {
@@ -104,7 +106,10 @@ export async function runInteractiveMenu(): Promise<MenuResult> {
     }
   }
 
-  if (operation === 'wrap-governance') {
+  if (
+    operation === 'wrap-governance' ||
+    operation === 'wrap-governance-liquid'
+  ) {
     const { delegatee } = await inquirer.prompt([
       {
         type: 'input',
@@ -115,6 +120,36 @@ export async function runInteractiveMenu(): Promise<MenuResult> {
       },
     ]);
     options.delegatee = delegatee;
+  }
+
+  if (operation === 'treasury-migrate-propose') {
+    const { operatedPools } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'operatedPools',
+        message: 'Operated pool ids (comma-separated bytes32, or leave blank):',
+        default: '',
+      },
+    ]);
+    const pools = (operatedPools as string)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (pools.length > 0) {
+      args.push('--operated-pools', ...pools);
+    }
+  }
+
+  if (operation === 'treasury-migrate-execute') {
+    const { proposalId } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'proposalId',
+        message: 'Proposal ID:',
+        validate: (input: string) => /^\d+$/.test(input) || 'Enter a numeric proposal ID',
+      },
+    ]);
+    args.push(String(proposalId));
   }
 
   const { dryRun } = await inquirer.prompt([

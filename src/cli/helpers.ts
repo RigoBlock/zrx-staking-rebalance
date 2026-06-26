@@ -109,6 +109,39 @@ export async function simulateCall(
   }
 }
 
+/**
+ * Simulate a transaction and assert that it reverts.
+ * Used for pre-condition checks (e.g. unstake must fail before the epoch ends).
+ */
+export async function simulateRevertExpect(
+  publicClient: PublicClient,
+  from: Address,
+  plan: OperationPlan,
+  expectedMessage?: string
+): Promise<void> {
+  try {
+    await publicClient.estimateGas({
+      account: from,
+      to: plan.to,
+      value: plan.value,
+      data: plan.data,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (expectedMessage && !message.toLowerCase().includes(expectedMessage.toLowerCase())) {
+      throw new Error(
+        `Expected revert for "${plan.description}" did not match. Got: ${message}`,
+        { cause: err }
+      );
+    }
+    info(`Confirmed "${plan.description}" reverts as expected`);
+    return;
+  }
+  throw new Error(
+    `Expected "${plan.description}" to revert, but the simulation succeeded.`
+  );
+}
+
 export async function sendEoaTransaction(
   walletClient: WalletClient,
   account: Account,

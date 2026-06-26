@@ -24,9 +24,12 @@ import { planStakeAndDelegate } from '../../src/operations/stakeAndDelegate.js';
 import { planUndelegateAndDelegate } from '../../src/operations/undelegateAndDelegate.js';
 import { planUnstake } from '../../src/operations/unstake.js';
 import { planWrapGovernance } from '../../src/operations/wrapGovernance.js';
+import { planWrapGovernanceLiquid } from '../../src/operations/wrapGovernanceLiquid.js';
 import { planUnstakeAndWrapGovernance } from '../../src/operations/wrapGovernanceFromStake.js';
+import { planTreasuryMigrationProposal } from '../../src/operations/treasuryMigrate.js';
 import {
   SAFE_WALLET_ADDRESS,
+  STAKING_PROXY_ADDRESS,
   TARGET_POOL_31,
   ZRX_TOKEN_ADDRESS,
 } from '../../src/config/constants.js';
@@ -154,7 +157,7 @@ describe.skipIf(!FORK_URL)('integration: mainnet fork', () => {
 
   it('wraps liquid ZRX into wZRX governance (storage override)', async () => {
     await setZrxBalance(fork, TEST_EOA_ADDRESS, parseEther('100'));
-    const { plans } = await planWrapGovernance(
+    const { plans } = await planWrapGovernanceLiquid(
       fork.publicClient,
       TEST_EOA_ADDRESS,
       parseEther('50'),
@@ -174,6 +177,46 @@ describe.skipIf(!FORK_URL)('integration: mainnet fork', () => {
       const receipt = await fork.publicClient.waitForTransactionReceipt({ hash });
       expect(receipt.status).toBe('success');
     }
+  });
+
+  it('executes the full wrap-governance flow on the fork', async () => {
+    const walletClient = createTestWalletClient(fork);
+
+    // Advance time far enough that endEpoch() can be called.
+    const epochDuration = await fork.publicClient.readContract({
+      address: STAKING_PROXY_ADDRESS,
+      abi: [{ type: 'function', name: 'epochDurationInSeconds', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' }],
+      functionName: 'epochDurationInSeconds',
+    });
+    await fork.testClient.increaseTime({ seconds: Number(epochDuration) + 200 });
+    await fork.testClient.mine({ blocks: 1 });
+
+    const wrapAmount = parseEther('100');
+    const { plans } = await planWrapGovernance(
+      fork.publicClient,
+      TEST_EOA_ADDRESS,
+      wrapAmount,
+      TEST_EOA_ADDRESS
+    );
+    expect(plans.length).toBe(7);
+
+    for (const plan of plans) {
+      const hash = await walletClient.sendTransaction({
+        chain: mainnet,
+        account: TEST_EOA_ADDRESS,
+        to: plan.to,
+        value: plan.value,
+        data: plan.data,
+      });
+      const receipt = await fork.publicClient.waitForTransactionReceipt({ hash });
+      expect(receipt.status).toBe('success');
+    }
+  });
+
+  it('builds a treasury migration proposal and checks proposer voting power', async () => {
+    await expect(
+      planTreasuryMigrationProposal(fork.publicClient, TEST_EOA_ADDRESS)
+    ).rejects.toThrow(/voting power|proposal threshold/i);
   });
 
   it('builds redelegate calldata for the test account', async () => {

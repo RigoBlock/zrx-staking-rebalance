@@ -19,6 +19,8 @@ import {
 } from '../config/constants.js';
 import { getPoolLabel } from '../config/pools.js';
 import { StakeStatus, type StakeInfo } from '../types.js';
+import { multicallRead } from '../ethereum/multicall.js';
+import { withRetry } from '../ethereum/retry.js';
 
 // --------------------------------------------------------------------------
 // Calldata encoders
@@ -64,6 +66,14 @@ export function encodeBatchExecute(calls: Hex[]): Hex {
   });
 }
 
+export function encodeEndEpoch(): Hex {
+  return encodeFunctionData({
+    abi: STAKING_PROXY_ABI,
+    functionName: 'endEpoch',
+    args: [],
+  });
+}
+
 // --------------------------------------------------------------------------
 // High-level delegation helpers
 // --------------------------------------------------------------------------
@@ -105,17 +115,80 @@ export interface StoredBalance {
   nextEpochBalance: bigint;
 }
 
+export interface EpochInfo {
+  currentEpoch: bigint;
+  currentEpochStartTimeInSeconds: bigint;
+  epochDurationInSeconds: bigint;
+}
+
+export async function readEpochInfo(publicClient: PublicClient): Promise<EpochInfo> {
+  const [currentEpoch, currentEpochStartTimeInSeconds, epochDurationInSeconds] =
+    await withRetry(() =>
+      multicallRead(publicClient, [
+        { address: STAKING_PROXY_ADDRESS, abi: STAKING_PROXY_ABI, functionName: 'currentEpoch' },
+        { address: STAKING_PROXY_ADDRESS, abi: STAKING_PROXY_ABI, functionName: 'currentEpochStartTimeInSeconds' },
+        { address: STAKING_PROXY_ADDRESS, abi: STAKING_PROXY_ABI, functionName: 'epochDurationInSeconds' },
+      ])
+    );
+  return {
+    currentEpoch: currentEpoch as bigint,
+    currentEpochStartTimeInSeconds: currentEpochStartTimeInSeconds as bigint,
+    epochDurationInSeconds: epochDurationInSeconds as bigint,
+  };
+}
+
 export async function readOwnerUndelegatedStake(
   publicClient: PublicClient,
   staker: Address
 ): Promise<StoredBalance> {
-  const result = (await publicClient.readContract({
-    address: STAKING_PROXY_ADDRESS,
-    abi: STAKING_PROXY_ABI,
-    functionName: 'getOwnerStakeByStatus',
-    args: [staker, StakeStatus.UNDELEGATED],
-  })) as { currentEpoch: bigint; currentEpochBalance: bigint; nextEpochBalance: bigint };
-  return result;
+  return (await withRetry(() =>
+    publicClient.readContract({
+      address: STAKING_PROXY_ADDRESS,
+      abi: STAKING_PROXY_ABI,
+      functionName: 'getOwnerStakeByStatus',
+      args: [staker, StakeStatus.UNDELEGATED],
+    })
+  )) as StoredBalance;
+}
+
+export async function readOwnerDelegatedStake(
+  publicClient: PublicClient,
+  staker: Address
+): Promise<StoredBalance> {
+  return (await withRetry(() =>
+    publicClient.readContract({
+      address: STAKING_PROXY_ADDRESS,
+      abi: STAKING_PROXY_ABI,
+      functionName: 'getOwnerStakeByStatus',
+      args: [staker, StakeStatus.DELEGATED],
+    })
+  )) as StoredBalance;
+}
+
+export async function readOwnerStakeStatuses(
+  publicClient: PublicClient,
+  staker: Address
+): Promise<{ undelegated: StoredBalance; delegated: StoredBalance }> {
+  const [undelegated, delegated] = await withRetry(() =>
+    multicallRead(publicClient, [
+      {
+        address: STAKING_PROXY_ADDRESS,
+        abi: STAKING_PROXY_ABI,
+        functionName: 'getOwnerStakeByStatus',
+        args: [staker, StakeStatus.UNDELEGATED],
+      },
+      {
+        address: STAKING_PROXY_ADDRESS,
+        abi: STAKING_PROXY_ABI,
+        functionName: 'getOwnerStakeByStatus',
+        args: [staker, StakeStatus.DELEGATED],
+      },
+    ])
+  );
+  return {
+    undelegated: undelegated as StoredBalance,
+    delegated: delegated as StoredBalance,
+  };
 }
 
 export async function readStakeDelegatedToPool(
@@ -123,13 +196,14 @@ export async function readStakeDelegatedToPool(
   staker: Address,
   poolId: Hex
 ): Promise<StoredBalance> {
-  const result = (await publicClient.readContract({
-    address: STAKING_PROXY_ADDRESS,
-    abi: STAKING_PROXY_ABI,
-    functionName: 'getStakeDelegatedToPoolByOwner',
-    args: [staker, poolId],
-  })) as { currentEpoch: bigint; currentEpochBalance: bigint; nextEpochBalance: bigint };
-  return result;
+  return (await withRetry(() =>
+    publicClient.readContract({
+      address: STAKING_PROXY_ADDRESS,
+      abi: STAKING_PROXY_ABI,
+      functionName: 'getStakeDelegatedToPoolByOwner',
+      args: [staker, poolId],
+    })
+  )) as StoredBalance;
 }
 
 // --------------------------------------------------------------------------

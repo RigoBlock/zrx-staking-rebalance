@@ -20,12 +20,15 @@ src/
     constants.ts      # Mainnet contract addresses and ABIs
     pools.ts          # Target pool id ↔ operator mapping
   contracts/
-    staking.ts        # Staking proxy calldata encoders
+    staking.ts        # Staking proxy calldata encoders + epoch reads
+    treasury.ts       # Old ZrxTreasury + Polygon migration helpers
     tupleFixer.ts     # Rigoblock TupleFixer integration
     zrx.ts            # ZRX ERC20 approval helpers
     wzrx.ts           # Wrapped ZRX governance helpers
   ethereum/
-    client.ts         # Viem public/wallet client factory
+    client.ts         # Viem public/wallet client factory (with retry)
+    multicall.ts      # Batched on-chain reads with serial fallback
+    retry.ts          # Bounded async retry helper
     signer.ts         # Secure private-key prompt and wipe
     hardware.ts       # Ledger / Trezor account wrappers
   operations/
@@ -35,7 +38,9 @@ src/
     undelegateAndDelegate.ts
     stakeAndDelegate.ts
     unstake.ts
+    treasuryMigrate.ts
     wrapGovernance.ts
+    wrapGovernanceLiquid.ts
   safe/
     kit.ts            # Safe SDK initialization + version warning
     transaction.ts    # Propose / confirm / execute Safe transactions
@@ -105,11 +110,25 @@ yarn cli redelegate 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000
 # Atomic stake + delegate
 yarn cli stake-and-delegate 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000
 
+`stake-new` and `stake-and-delegate` automatically approve the 0x ERC20 Asset
+Proxy (`0x95e6f48254609a6ee006f7d493c8e5fb97094cef`) before staking and reset
+the allowance to 0 immediately afterward.
+
 # Unstake undelegated ZRX (must wait an epoch after undelegating)
 yarn cli unstake 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 1000000
 
-# Wrap liquid ZRX into wZRX governance (does not touch delegated stake)
+# Full legacy-stake migration to wZRX governance
+# (undelegate all -> endEpoch -> unstake -> wrap -> delegate -> reset approval)
 yarn cli wrap-governance 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000 --delegatee 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
+
+# Wrap already-liquid (unstaked) ZRX into wZRX governance
+yarn cli wrap-governance-liquid 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000 --delegatee 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
+
+# Propose migrating old ZRX treasury assets to the new governance treasury
+yarn cli treasury-migrate-propose 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
+
+# Execute the proposal after it has passed
+yarn cli treasury-migrate-execute 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B <proposalId>
 ```
 
 Add a 4th pool by appending its bytes32 id:
@@ -196,9 +215,11 @@ high-value operations.
 yarn install            # Install dependencies
 yarn build              # TypeScript typecheck
 yarn lint               # ESLint
-yarn test               # Unit tests + skipped fork tests
-RPC_URL=https://... yarn test  # Includes mainnet fork integration tests
+yarn test               # Unit tests only
+yarn test:foundry       # Unit + mainnet fork integration tests (reads RPC_URL from .env)
 ```
+
+Fork integration tests are skipped automatically when `RPC_URL` is not set. Add `RPC_URL=` to `.env` to run them locally.
 
 ## License
 

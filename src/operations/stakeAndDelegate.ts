@@ -18,8 +18,7 @@ import {
 import {
   encodeApproveZrxToErc20Proxy,
   encodeResetZrxErc20ProxyApproval,
-  readZrxAllowance,
-  readZrxBalance,
+  readZrxBalanceAndAllowance,
 } from '../contracts/zrx.js';
 import {
   encodeBatchExecute,
@@ -39,7 +38,11 @@ export async function planStakeAndDelegate(
     throw new Error('At least one target pool is required');
   }
 
-  const balance = await readZrxBalance(publicClient, staker);
+  const { balance, allowance } = await readZrxBalanceAndAllowance(
+    publicClient,
+    staker,
+    ERC20_PROXY_ADDRESS
+  );
   if (balance < amount) {
     throw new Error(
       `Insufficient ZRX balance: have ${formatZrx(balance)}, need ${formatZrx(
@@ -48,7 +51,6 @@ export async function planStakeAndDelegate(
     );
   }
 
-  const allowance = await readZrxAllowance(publicClient, staker, ERC20_PROXY_ADDRESS);
   const needsApproval = allowance < amount;
 
   const allocations = splitEqually(amount, poolIds.length);

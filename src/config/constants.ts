@@ -37,6 +37,30 @@ export const WZRX_TOKEN_ADDRESS: Address =
 export const ZEROEX_VOTES_PROXY_ADDRESS: Address =
   '0x9c766e51b46cbc1fa4f8b6718ed4a60ac9d591fb';
 
+/** Old 0x ZrxTreasury contract (governs migration of treasury assets). */
+export const OLD_ZRX_TREASURY_ADDRESS: Address =
+  '0x0bb1810061c2f5b2088054ee184e6c79e1591101';
+
+/** New 0x governance treasury (ZeroExTreasuryGovernor). */
+export const NEW_ZRX_TREASURY_ADDRESS: Address =
+  '0x4822cfc1e7699bdb9551bdfd3a838ee414bc2008';
+
+/** Polygon MATIC → POL migration proxy on Ethereum mainnet. */
+export const POLYGON_MIGRATION_ADDRESS: Address =
+  '0x29e7DF7b6A1B2b07b731457f499E1696c60E2C4e';
+
+/** POL token (successor to MATIC) on Ethereum mainnet. */
+export const POL_TOKEN_ADDRESS: Address =
+  '0x455e53CBB86018Ac2B8092FdCd39d8444aFFC3F6';
+
+/** Wrapped CELO token held by the old treasury. */
+export const WCELO_TOKEN_ADDRESS: Address =
+  '0xe452e6ea2ddeb012e20db73bf5d3863a3ac8d77a';
+
+/** MATIC token held by the old treasury. */
+export const MATIC_TOKEN_ADDRESS: Address =
+  '0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0';
+
 // --------------------------------------------------------------------------
 // Wallet addresses supplied by the user
 // --------------------------------------------------------------------------
@@ -100,6 +124,34 @@ export const STAKING_PROXY_ABI: Abi = [
     name: 'unstake',
     outputs: [],
     stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'endEpoch',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'currentEpoch',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'currentEpochStartTimeInSeconds',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'epochDurationInSeconds',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
     type: 'function',
   },
   {
@@ -175,6 +227,16 @@ export const ERC20_ABI: Abi = [
     stateMutability: 'view',
     type: 'function',
   },
+  {
+    inputs: [
+      { internalType: 'address', name: 'to', type: 'address' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
+    ],
+    name: 'transfer',
+    outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
 ];
 
 /** Minimal ABI for the wZRX governance wrapper. */
@@ -200,6 +262,13 @@ export const WZRX_ABI: Abi = [
     inputs: [{ internalType: 'address', name: 'account', type: 'address' }],
     name: 'delegates',
     outputs: [{ internalType: 'address', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'address', name: 'account', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function',
   },

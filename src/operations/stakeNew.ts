@@ -17,8 +17,7 @@ import {
 import {
   encodeApproveZrxToErc20Proxy,
   encodeResetZrxErc20ProxyApproval,
-  readZrxAllowance,
-  readZrxBalance,
+  readZrxBalanceAndAllowance,
 } from '../contracts/zrx.js';
 import { encodeStake } from '../contracts/staking.js';
 import { formatZrx } from '../utils/amounts.js';
@@ -29,7 +28,11 @@ export async function planStakeNew(
   staker: Address,
   amount: bigint
 ): Promise<OperationPlanResult> {
-  const balance = await readZrxBalance(publicClient, staker);
+  const { balance, allowance } = await readZrxBalanceAndAllowance(
+    publicClient,
+    staker,
+    ERC20_PROXY_ADDRESS
+  );
   if (balance < amount) {
     throw new Error(
       `Insufficient ZRX balance: have ${formatZrx(balance)}, need ${formatZrx(
@@ -38,11 +41,6 @@ export async function planStakeNew(
     );
   }
 
-  const allowance = await readZrxAllowance(
-    publicClient,
-    staker,
-    ERC20_PROXY_ADDRESS
-  );
   const needsApproval = allowance < amount;
 
   const plans = [

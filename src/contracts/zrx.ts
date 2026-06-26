@@ -24,6 +24,8 @@ import {
   WZRX_TOKEN_ADDRESS,
   ZRX_TOKEN_ADDRESS,
 } from '../config/constants.js';
+import { multicallRead } from '../ethereum/multicall.js';
+import { withRetry } from '../ethereum/retry.js';
 
 export function encodeApprove(spender: Address, amount: bigint): Hex {
   return encodeFunctionData({
@@ -38,24 +40,42 @@ export async function readZrxAllowance(
   owner: Address,
   spender: Address
 ): Promise<bigint> {
-  return (await publicClient.readContract({
-    address: ZRX_TOKEN_ADDRESS,
-    abi: ERC20_ABI,
-    functionName: 'allowance',
-    args: [owner, spender],
-  })) as bigint;
+  return (await withRetry(() =>
+    publicClient.readContract({
+      address: ZRX_TOKEN_ADDRESS,
+      abi: ERC20_ABI,
+      functionName: 'allowance',
+      args: [owner, spender],
+    })
+  )) as bigint;
 }
 
 export async function readZrxBalance(
   publicClient: PublicClient,
   account: Address
 ): Promise<bigint> {
-  return (await publicClient.readContract({
-    address: ZRX_TOKEN_ADDRESS,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: [account],
-  })) as bigint;
+  return (await withRetry(() =>
+    publicClient.readContract({
+      address: ZRX_TOKEN_ADDRESS,
+      abi: ERC20_ABI,
+      functionName: 'balanceOf',
+      args: [account],
+    })
+  )) as bigint;
+}
+
+export async function readZrxBalanceAndAllowance(
+  publicClient: PublicClient,
+  account: Address,
+  spender: Address
+): Promise<{ balance: bigint; allowance: bigint }> {
+  const [balance, allowance] = await withRetry(() =>
+    multicallRead(publicClient, [
+      { address: ZRX_TOKEN_ADDRESS, abi: ERC20_ABI, functionName: 'balanceOf', args: [account] },
+      { address: ZRX_TOKEN_ADDRESS, abi: ERC20_ABI, functionName: 'allowance', args: [account, spender] },
+    ])
+  );
+  return { balance: balance as bigint, allowance: allowance as bigint };
 }
 
 /** Approve the 0x ERC20 Asset Proxy so the ZRX Vault can pull ZRX on stake. */

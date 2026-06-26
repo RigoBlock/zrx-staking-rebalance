@@ -28,7 +28,11 @@ import { parseZrx, planDelegateEqual } from './operations/delegateEqual.js';
 import { planUndelegateAndDelegate } from './operations/undelegateAndDelegate.js';
 import { planStakeAndDelegate } from './operations/stakeAndDelegate.js';
 import { planWrapGovernance } from './operations/wrapGovernance.js';
-import { planUnstakeAndWrapGovernance } from './operations/wrapGovernanceFromStake.js';
+import { planWrapGovernanceLiquid } from './operations/wrapGovernanceLiquid.js';
+import {
+  planTreasuryMigrationExecution,
+  planTreasuryMigrationProposal,
+} from './operations/treasuryMigrate.js';
 import { planUnstake } from './operations/unstake.js';
 import {
   loadSigner,
@@ -98,8 +102,10 @@ function showDetailedHelp(): void {
     ['redelegate <wallet> <amount> [pools...]', 'Undelegate all + delegate equally in one batch. Source: src/operations/undelegateAndDelegate.ts'],
     ['stake-and-delegate <wallet> <amount> [pools...]', 'Stake + delegate equally in one batch. Source: src/operations/stakeAndDelegate.ts'],
     ['unstake <wallet> <amount>', 'Unstake undelegated ZRX. Source: src/operations/unstake.ts'],
-    ['wrap-governance <wallet> <amount> --delegatee <addr>', 'Wrap liquid ZRX into wZRX governance. Source: src/operations/wrapGovernance.ts'],
-    ['migrate-governance <wallet> <amount> --delegatee <addr>', 'Unstake undelegated ZRX and wrap into wZRX. Source: src/operations/wrapGovernanceFromStake.ts'],
+    ['wrap-governance <wallet> <amount> --delegatee <addr>', 'Full legacy-stake migration to wZRX. Source: src/operations/wrapGovernance.ts'],
+    ['wrap-governance-liquid <wallet> <amount> --delegatee <addr>', 'Wrap liquid ZRX into wZRX governance. Source: src/operations/wrapGovernanceLiquid.ts'],
+    ['treasury-migrate-propose <wallet> [--operated-pools..]', 'Propose migration of old treasury assets. Source: src/operations/treasuryMigrate.ts'],
+    ['treasury-migrate-execute <wallet> <proposalId>', 'Execute a passed treasury migration proposal. Source: src/operations/treasuryMigrate.ts'],
     ['safe pending <safe>', 'List pending Safe transactions. Source: src/safe/transaction.ts'],
     ['safe show <safe> <safeTxHash>', 'Show a Safe transaction and its signatures. Source: src/safe/transaction.ts'],
     ['safe sign <safe> <safeTxHash>', 'Sign a pending Safe transaction. Source: src/safe/transaction.ts'],
@@ -161,6 +167,11 @@ function getPoolIds(argv: { pools?: string[] }): Hex[] {
   const extras = argv.pools ?? [];
   const ids = resolveTargetPools(extras as Hex[]);
   return validatePoolIds(ids);
+}
+
+function parseOperatedPools(input?: string[]): Hex[] {
+  const pools = input ?? [];
+  return validatePoolIds(pools as Hex[]);
 }
 
 interface RunOperationArgv {
@@ -359,7 +370,7 @@ baseYargs
   )
   .command(
     'wrap-governance <wallet> <amount>',
-    'Wrap liquid ZRX into wZRX governance (does not touch delegated stake)',
+    'Full legacy-stake migration to wZRX governance (undelegate + endEpoch + unstake + wrap)',
     (y) =>
       y
         .positional('wallet', { type: 'string', demandOption: true })
@@ -378,8 +389,8 @@ baseYargs
     }
   )
   .command(
-    'migrate-governance <wallet> <amount>',
-    'Unstake undelegated ZRX and wrap it into wZRX governance',
+    'wrap-governance-liquid <wallet> <amount>',
+    'Wrap liquid ZRX into wZRX governance (does not touch delegated stake)',
     (y) =>
       y
         .positional('wallet', { type: 'string', demandOption: true })
@@ -393,7 +404,40 @@ baseYargs
       const amount = parseZrx(argv.amount as string);
       const delegatee = argv.delegatee as Address;
       await runOperation(argv as unknown as RunOperationArgv, async (publicClient, wallet) =>
-        planUnstakeAndWrapGovernance(publicClient, wallet, amount, delegatee)
+        planWrapGovernanceLiquid(publicClient, wallet, amount, delegatee)
+      );
+    }
+  )
+  .command(
+    'treasury-migrate-propose <wallet>',
+    'Create a ZrxTreasury proposal to migrate assets to the new governance treasury',
+    (y) =>
+      y
+        .positional('wallet', { type: 'string', demandOption: true })
+        .option('operated-pools', {
+          type: 'string',
+          array: true,
+          default: [] as string[],
+          description: 'Optional pool ids operated by the proposer (bytes32)',
+        }),
+    async (argv) => {
+      const operatedPools = parseOperatedPools(argv['operated-pools'] as string[]);
+      await runOperation(argv as unknown as RunOperationArgv, async (publicClient, wallet) =>
+        planTreasuryMigrationProposal(publicClient, wallet, operatedPools)
+      );
+    }
+  )
+  .command(
+    'treasury-migrate-execute <wallet> <proposalId>',
+    'Execute a passed ZrxTreasury migration proposal',
+    (y) =>
+      y
+        .positional('wallet', { type: 'string', demandOption: true })
+        .positional('proposalId', { type: 'string', demandOption: true }),
+    async (argv) => {
+      const proposalId = BigInt(argv.proposalId as string);
+      await runOperation(argv as unknown as RunOperationArgv, async (publicClient) =>
+        planTreasuryMigrationExecution(publicClient, proposalId)
       );
     }
   )

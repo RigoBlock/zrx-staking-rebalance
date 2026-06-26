@@ -12,6 +12,12 @@ export interface OperationPlan {
   value: bigint;
   data: Hex;
   description: string;
+  /**
+   * If true, the Safe inner-call simulator will skip this action. Useful when
+   * an action only succeeds after earlier actions in the same bundle have run
+   * (e.g. endEpoch + unstake in a single Safe transaction).
+   */
+  skipSimulation?: boolean;
 }
 
 /** Result of planning a rebalance operation. */
