@@ -1,7 +1,7 @@
-# Mocks and Missing Information
+# Known Limitations and Unverified Components
 
-This file lists everything that is still mocked, unverified, or otherwise not
-fully resolved.
+This file lists parts of the codebase that have known limitations or have not
+been executed against real mainnet state/hardware.
 
 ## 1. Hardware wallets
 
@@ -14,6 +14,12 @@ executed against physical devices in this repo.
 Before mainnet use: run a dry-run on a fork, verify the derived address, and
 confirm the device prompts and signed transactions.
 
+> Note: if the project later adopts Foundry scripts, EOA transactions can also
+> be broadcast with hardware wallets via `cast send --ledger` or
+> `forge script --broadcast --ledger`. The Safe multisig workflow still requires
+> the Safe SDK or Transaction Service for proposing, collecting signatures, and
+> executing.
+
 ## 2. Safe module/guard validation
 
 The CLI reads the Safe singleton version via the Safe SDK and warns on outdated
@@ -23,23 +29,3 @@ versions, but it does not enumerate or validate enabled modules or guards.
 
 There is no `--gas-limit` override. Gas is estimated automatically and reverts
 are caught during simulation.
-
-## 4. Fourth target delegate
-
-The 4th voting delegate's pool id and operator are unknown. The CLI accepts an
-optional extra pool id:
-
-```bash
-yarn cli delegate-equal <wallet> <amount> <pool4-id>
-```
-
-## 5. Fork integration tests
-
-**Location**: `tests/integration/fork.test.ts`
-
-Fork tests are skipped unless the `RPC_URL` environment variable is set. They
-spin up a local anvil mainnet fork, seed a fresh test account with ZRX via
-ERC-20 storage override, stake it, delegate it, and advance the staking epoch
-by overriding the staking contract's `currentEpoch` / start-time storage slots.
-
-CI runs them automatically when the repository secret `RPC_URL` is configured.

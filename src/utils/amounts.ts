@@ -50,6 +50,30 @@ export function parseZrx(input: string): bigint {
   return BigInt(whole) * 10n ** 18n + BigInt(padded);
 }
 
+/**
+ * Split a total amount proportionally to a set of weights.
+ * The remainder (if any) is added to the last part so the returned parts
+ * always sum to `total`.
+ */
+export function splitByWeights(total: bigint, weights: bigint[]): bigint[] {
+  if (weights.length === 0) throw new Error('weights must not be empty');
+  if (total < 0n) throw new Error('total must be non-negative');
+
+  const totalWeight = weights.reduce((a, b) => a + b, 0n);
+  if (totalWeight === 0n) throw new Error('total weight must be greater than 0');
+
+  let distributed = 0n;
+  const parts = weights.map((weight, i) => {
+    if (i === weights.length - 1) {
+      return total - distributed;
+    }
+    const part = (total * weight) / totalWeight;
+    distributed += part;
+    return part;
+  });
+  return parts;
+}
+
 /** Build a labeled allocation table for terminal output. */
 export function formatAllocations(
   poolIds: Hex[],

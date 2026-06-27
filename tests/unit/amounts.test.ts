@@ -3,11 +3,39 @@ import {
   formatAllocations,
   formatZrx,
   parseZrx,
+  splitByWeights,
   splitEqually,
   validateSplit,
 } from '../../src/utils/amounts.js';
 
 describe('amounts', () => {
+  describe('splitByWeights', () => {
+    it('splits proportionally by weight', () => {
+      expect(splitByWeights(100n, [50n, 50n])).toEqual([50n, 50n]);
+      expect(splitByWeights(100n, [75n, 25n])).toEqual([75n, 25n]);
+    });
+
+    it('puts the rounding remainder on the last part', () => {
+      // 100 * 1/3 = 33.333..., so first two parts are 33 and the remainder
+      // goes to the last part.
+      expect(splitByWeights(100n, [1n, 1n, 1n])).toEqual([33n, 33n, 34n]);
+    });
+
+    it('returns parts that sum to the total', () => {
+      const total = 12345n;
+      const weights = [100n, 200n, 300n, 400n];
+      const parts = splitByWeights(total, weights);
+      expect(parts.reduce((a, b) => a + b, 0n)).toBe(total);
+    });
+
+    it('rejects empty weights or zero total weight', () => {
+      expect(() => splitByWeights(100n, [])).toThrow('weights must not be empty');
+      expect(() => splitByWeights(100n, [0n, 0n])).toThrow(
+        'total weight must be greater than 0'
+      );
+    });
+  });
+
   describe('splitEqually', () => {
     it('splits evenly when divisible', () => {
       expect(splitEqually(300n, 3)).toEqual([100n, 100n, 100n]);

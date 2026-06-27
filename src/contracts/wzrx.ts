@@ -11,8 +11,9 @@
  * GitHub source: src/contracts/wzrx.ts
  */
 
-import { encodeFunctionData, type Address, type Hex } from 'viem';
+import { encodeFunctionData, type Address, type Hex, type PublicClient } from 'viem';
 import { WZRX_ABI, WZRX_TOKEN_ADDRESS } from '../config/constants.js';
+import { withRetry } from '../ethereum/retry.js';
 import { encodeApprove } from './zrx.js';
 
 export function encodeWrapZrxFor(account: Address, amount: bigint): Hex {
@@ -39,4 +40,32 @@ export function encodeApproveZrxToWzrx(amount: bigint): Hex {
 /** Encode a ZRX approval reset for the wZRX spender. */
 export function encodeResetZrxApprovalForWzrx(): Hex {
   return encodeApprove(WZRX_TOKEN_ADDRESS, 0n);
+}
+
+export async function readWzrxBalance(
+  publicClient: PublicClient,
+  account: Address
+): Promise<bigint> {
+  return (await withRetry(() =>
+    publicClient.readContract({
+      address: WZRX_TOKEN_ADDRESS,
+      abi: WZRX_ABI,
+      functionName: 'balanceOf',
+      args: [account],
+    })
+  )) as bigint;
+}
+
+export async function readWzrxDelegatee(
+  publicClient: PublicClient,
+  account: Address
+): Promise<Address> {
+  return (await withRetry(() =>
+    publicClient.readContract({
+      address: WZRX_TOKEN_ADDRESS,
+      abi: WZRX_ABI,
+      functionName: 'delegates',
+      args: [account],
+    })
+  )) as Address;
 }

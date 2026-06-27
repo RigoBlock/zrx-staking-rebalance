@@ -107,6 +107,12 @@ yarn cli delegate-equal 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000
 # Atomic undelegate + redelegate
 yarn cli redelegate 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000
 
+# Undelegate all active stake and redelegate equally to target pools
+yarn cli redelegate-all 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
+
+# Rebalance so the target pools total exactly 2,000,000 ZRX
+yarn cli redelegate-amount 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 2000000
+
 # Atomic stake + delegate
 yarn cli stake-and-delegate 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000
 
@@ -124,6 +130,11 @@ yarn cli wrap-governance 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000 --de
 # Wrap already-liquid (unstaked) ZRX into wZRX governance
 yarn cli wrap-governance-liquid 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000 --delegatee 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
 
+# Undelegate from non-target pools, end the epoch, and wrap to wZRX governance
+yarn cli wrap-governance-exclude-pools 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 2000000 \
+  --exclude-pools 0x0000000000000000000000000000000000000000000000000000000000000031 \
+  --delegatee 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
+
 # Propose migrating old ZRX treasury assets to the new governance treasury
 yarn cli treasury-migrate-propose 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
 
@@ -134,7 +145,7 @@ yarn cli treasury-migrate-execute 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B <pr
 Add a 4th pool by appending its bytes32 id:
 
 ```bash
-yarn cli delegate-equal 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 4000000 0x0000000000000000000000000000000000000000000000000000000000000099
+yarn cli delegate-equal 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 4000000 0x0000000000000000000000000000000000000000000000000000000000000032
 ```
 
 ### Safe operations

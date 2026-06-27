@@ -18,7 +18,7 @@ import {
   type Address,
   type WalletClient,
 } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { privateKeyToAccount, mnemonicToAccount } from 'viem/accounts';
 import { mainnet } from 'viem/chains';
 import {
   STAKING_PROXY_ADDRESS,
@@ -70,6 +70,151 @@ export function createTestWalletClient(fork: ForkInstance): WalletClient {
     chain: mainnet,
     transport: http(fork.rpcUrl),
     account,
+  });
+}
+
+const ANVIL_MNEMONIC = 'test test test test test test test test test test test junk';
+
+/** Return one of Anvil's deterministic accounts by index. */
+export function getAnvilAccount(index: number) {
+  // Anvil derives accounts by address index, not account index.
+  return mnemonicToAccount(ANVIL_MNEMONIC, { addressIndex: index });
+}
+
+/** Create a wallet client for an arbitrary account on the fork. */
+export function createWalletClientForAccount(
+  fork: ForkInstance,
+  account: ReturnType<typeof getAnvilAccount>
+): WalletClient {
+  return createWalletClient({
+    chain: mainnet,
+    transport: http(fork.rpcUrl),
+    account,
+  });
+}
+
+/**
+ * Advance the fork timestamp past the current epoch end and mine a block.
+ * This does NOT call endEpoch(); it only makes the epoch eligible to end.
+ */
+export async function advanceEpochAndMine(fork: ForkInstance): Promise<void> {
+  const epochDuration = await fork.publicClient.readContract({
+    address: STAKING_PROXY_ADDRESS,
+    abi: parseAbi(['function epochDurationInSeconds() view returns (uint256)']),
+    functionName: 'epochDurationInSeconds',
+  });
+  await fork.testClient.increaseTime({ seconds: Number(epochDuration) + 200 });
+  await fork.testClient.mine({ blocks: 1 });
+}
+
+/**
+ * Stake additional liquid ZRX and delegate it to a single pool.
+ * Useful for tests that need stake spread across multiple pools on top of the
+ * default `seedTestStake` fixture.
+ */
+export async function addDelegation(
+  fork: ForkInstance,
+  poolId: `0x${string}`,
+  amount: bigint
+): Promise<void> {
+  const walletClient = createTestWalletClient(fork);
+  const account = walletClient.account!.address;
+
+  const approveHash = await walletClient.sendTransaction({
+    chain: mainnet,
+    account,
+    to: ZRX_TOKEN_ADDRESS,
+    data: encodeApproveZrxToErc20Proxy(amount),
+  });
+  const approveReceipt = await fork.publicClient.waitForTransactionReceipt({
+    hash: approveHash,
+  });
+  if (approveReceipt.status !== 'success') {
+    throw new Error(`addDelegation approve failed: ${approveReceipt.status}`);
+  }
+
+  const stakeHash = await walletClient.sendTransaction({
+    chain: mainnet,
+    account,
+    to: STAKING_PROXY_ADDRESS,
+    data: encodeStake(amount),
+  });
+  const stakeReceipt = await fork.publicClient.waitForTransactionReceipt({
+    hash: stakeHash,
+  });
+  if (stakeReceipt.status !== 'success') {
+    throw new Error(`addDelegation stake failed: ${stakeReceipt.status}`);
+  }
+
+  const delegateHash = await walletClient.sendTransaction({
+    chain: mainnet,
+    account,
+    to: STAKING_PROXY_ADDRESS,
+    data: encodeDelegateToPool(poolId, amount),
+  });
+  const delegateReceipt = await fork.publicClient.waitForTransactionReceipt({
+    hash: delegateHash,
+  });
+  if (delegateReceipt.status !== 'success') {
+    throw new Error(`addDelegation delegate failed: ${delegateReceipt.status}`);
+  }
+}
+
+/**
+ * Seed the test account with ZRX, stake the requested amount, and delegate
+ * across the provided pools. Then advance the epoch via storage override so
+ * the delegation becomes active for reads.
+ */
+export async function seedStakeInPools(
+  fork: ForkInstance,
+  poolAmounts: { poolId: `0x${string}`; amount: bigint }[]
+): Promise<void> {
+  const walletClient = createTestWalletClient(fork);
+  const account = walletClient.account!.address;
+
+  const total = poolAmounts.reduce((a, b) => a + b.amount, 0n);
+
+  await setZrxBalance(fork, account, total);
+
+  await walletClient.sendTransaction({
+    chain: mainnet,
+    account,
+    to: ZRX_TOKEN_ADDRESS,
+    data: encodeApproveZrxToErc20Proxy(total),
+  });
+
+  await walletClient.sendTransaction({
+    chain: mainnet,
+    account,
+    to: STAKING_PROXY_ADDRESS,
+    data: encodeStake(total),
+  });
+
+  for (const { poolId, amount } of poolAmounts) {
+    await walletClient.sendTransaction({
+      chain: mainnet,
+      account,
+      to: STAKING_PROXY_ADDRESS,
+      data: encodeDelegateToPool(poolId, amount),
+    });
+  }
+
+  // Advance epoch via storage override so currentEpochBalance reflects delegation.
+  const block = await fork.publicClient.getBlock();
+  const currentEpoch = await fork.publicClient.readContract({
+    address: STAKING_PROXY_ADDRESS,
+    abi: [{ type: 'function', name: 'currentEpoch', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' }],
+    functionName: 'currentEpoch',
+  });
+  await fork.testClient.setStorageAt({
+    address: STAKING_PROXY_ADDRESS,
+    index: padHex(toHex(12n), { size: 32 }),
+    value: padHex(toHex((currentEpoch as bigint) + 1n), { size: 32 }),
+  });
+  await fork.testClient.setStorageAt({
+    address: STAKING_PROXY_ADDRESS,
+    index: padHex(toHex(13n), { size: 32 }),
+    value: padHex(toHex(block.timestamp - 10n), { size: 32 }),
   });
 }
 

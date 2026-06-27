@@ -8,6 +8,7 @@
  */
 
 import {
+  decodeFunctionData,
   encodeFunctionData,
   type Address,
   type Hex,
@@ -21,6 +22,8 @@ import { getPoolLabel } from '../config/pools.js';
 import { StakeStatus, type StakeInfo } from '../types.js';
 import { multicallRead } from '../ethereum/multicall.js';
 import { withRetry } from '../ethereum/retry.js';
+import { splitByWeights, splitEqually } from '../utils/amounts.js';
+import { fetchUndelegateAllCalldata } from './tupleFixer.js';
 
 // --------------------------------------------------------------------------
 // Calldata encoders
@@ -204,6 +207,136 @@ export async function readStakeDelegatedToPool(
       args: [staker, poolId],
     })
   )) as StoredBalance;
+}
+
+export interface DecodedMoveStake {
+  from: StakeInfo;
+  to: StakeInfo;
+  amount: bigint;
+}
+
+export function decodeMoveStake(data: Hex): DecodedMoveStake {
+  const decoded = decodeFunctionData({
+    abi: STAKING_PROXY_ABI,
+    data,
+  });
+  if (decoded.functionName !== 'moveStake') {
+    throw new Error(`Expected moveStake calldata, got ${decoded.functionName}`);
+  }
+  const args = decoded.args as [
+    { status: number; poolId: Hex },
+    { status: number; poolId: Hex },
+    bigint
+  ];
+  return {
+    from: { status: args[0].status, poolId: args[0].poolId },
+    to: { status: args[1].status, poolId: args[1].poolId },
+    amount: args[2],
+  };
+}
+
+export interface DelegatedPoolBalance {
+  poolId: Hex;
+  amount: bigint;
+}
+
+/**
+ * Read the currently delegated pool balances for a staker by decoding the
+ * TupleFixer undelegate-all calldata. This returns one entry per pool that has
+ * a non-zero delegated balance in the *next* epoch.
+ */
+export async function fetchDelegatedPoolBalances(
+  publicClient: PublicClient,
+  staker: Address
+): Promise<DelegatedPoolBalance[]> {
+  const { encodedCalls } = await fetchUndelegateAllCalldata(publicClient, staker);
+  const balances: DelegatedPoolBalance[] = [];
+  for (const call of encodedCalls) {
+    const decoded = decodeMoveStake(call);
+    if (decoded.from.status !== StakeStatus.DELEGATED) continue;
+    balances.push({ poolId: decoded.from.poolId, amount: decoded.amount });
+  }
+  return balances;
+}
+
+// --------------------------------------------------------------------------
+// Rebalancing helpers
+// --------------------------------------------------------------------------
+
+export interface ScaledUndelegationResult {
+  encodedCalls: Hex[];
+  undelegatedAmounts: bigint[];
+}
+
+/**
+ * Build moveStake calls that undelegate a specific `amount` proportionally from
+ * the provided delegated pool balances. The returned parts always sum to
+ * `amount` (any rounding remainder is assigned to the largest source).
+ */
+export function buildScaledUndelegation(
+  sourceBalances: DelegatedPoolBalance[],
+  amount: bigint
+): ScaledUndelegationResult {
+  if (amount < 0n) throw new Error('amount must be non-negative');
+  const sourceTotal = sourceBalances.reduce((a, b) => a + b.amount, 0n);
+  if (amount > sourceTotal) {
+    throw new Error(
+      `Cannot undelegate ${amount.toString()} from pools holding ${sourceTotal.toString()}`
+    );
+  }
+  if (sourceBalances.length === 0 || amount === 0n) {
+    return { encodedCalls: [], undelegatedAmounts: [] };
+  }
+
+  const weights = sourceBalances.map((b) => b.amount);
+  const undelegatedAmounts = splitByWeights(amount, weights);
+  const encodedCalls = sourceBalances.map((b, i) =>
+    encodeUndelegateFromPool(b.poolId, undelegatedAmounts[i])
+  );
+  return { encodedCalls, undelegatedAmounts };
+}
+
+export interface RebalanceResult {
+  encodedCalls: Hex[];
+  sourceAmounts: bigint[];
+  targetAmounts: bigint[];
+}
+
+/**
+ * Build moveStake calls that move `amount` from a set of source delegated pools
+ * to a set of target pools. The source side is scaled proportionally by current
+ * balance; the target side is split equally. Any rounding remainders are
+ * assigned to the last source/target respectively.
+ */
+export function buildRebalanceCalldata(
+  sourceBalances: DelegatedPoolBalance[],
+  targetPoolIds: Hex[],
+  amount: bigint
+): RebalanceResult {
+  if (amount < 0n) throw new Error('amount must be non-negative');
+  if (targetPoolIds.length === 0) throw new Error('targetPoolIds must not be empty');
+  const sourceTotal = sourceBalances.reduce((a, b) => a + b.amount, 0n);
+  if (amount > sourceTotal) {
+    throw new Error(
+      `Cannot rebalance ${amount.toString()} from pools holding ${sourceTotal.toString()}`
+    );
+  }
+  if (sourceBalances.length === 0 || amount === 0n) {
+    return { encodedCalls: [], sourceAmounts: [], targetAmounts: [] };
+  }
+
+  const sourceAmounts = splitByWeights(
+    amount,
+    sourceBalances.map((b) => b.amount)
+  );
+  const targetAmounts = splitEqually(amount, targetPoolIds.length);
+
+  const encodedCalls: Hex[] = [
+    ...sourceBalances.map((b, i) => encodeUndelegateFromPool(b.poolId, sourceAmounts[i])),
+    ...targetPoolIds.map((poolId, i) => encodeDelegateToPool(poolId, targetAmounts[i])),
+  ];
+
+  return { encodedCalls, sourceAmounts, targetAmounts };
 }
 
 // --------------------------------------------------------------------------

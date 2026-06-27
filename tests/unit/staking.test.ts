@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildRebalanceCalldata,
+  buildScaledUndelegation,
+  decodeMoveStake,
   encodeBatchExecute,
   encodeDelegateToPool,
   encodeEndEpoch,
@@ -68,5 +71,77 @@ describe('staking calldata', () => {
     const data = encodeEndEpoch();
     const decoded = decodeFunctionData({ abi: STAKING_PROXY_ABI, data });
     expect(decoded.functionName).toBe('endEpoch');
+  });
+
+  it('decodes moveStake calldata', () => {
+    const data = encodeMoveStake(
+      { status: StakeStatus.DELEGATED, poolId },
+      { status: StakeStatus.UNDELEGATED, poolId: `0x${'0'.repeat(64)}` as `0x${string}` },
+      5000n
+    );
+    const decoded = decodeMoveStake(data);
+    expect(decoded.from.status).toBe(StakeStatus.DELEGATED);
+    expect(decoded.to.status).toBe(StakeStatus.UNDELEGATED);
+    expect(decoded.amount).toBe(5000n);
+  });
+
+  it('rejects decoding non-moveStake calldata', () => {
+    expect(() => decodeMoveStake(encodeStake(100n))).toThrow(
+      'Expected moveStake calldata'
+    );
+  });
+
+  describe('buildScaledUndelegation', () => {
+    it('scales undelegation proportionally across pools', () => {
+      const result = buildScaledUndelegation(
+        [
+          { poolId, amount: 75n },
+          { poolId: `0x${'0'.repeat(63)}1` as `0x${string}`, amount: 25n },
+        ],
+        100n
+      );
+      expect(result.encodedCalls).toHaveLength(2);
+      expect(result.undelegatedAmounts).toEqual([75n, 25n]);
+    });
+
+    it('throws when amount exceeds source total', () => {
+      expect(() =>
+        buildScaledUndelegation([{ poolId, amount: 100n }], 200n)
+      ).toThrow('Cannot undelegate');
+    });
+
+    it('returns empty for zero amount', () => {
+      const result = buildScaledUndelegation([{ poolId, amount: 100n }], 0n);
+      expect(result.encodedCalls).toHaveLength(0);
+    });
+  });
+
+  describe('buildRebalanceCalldata', () => {
+    it('builds undelegate + delegate calls for a full rebalance', () => {
+      const targetPool = `0x${'0'.repeat(63)}1` as `0x${string}`;
+      const result = buildRebalanceCalldata(
+        [{ poolId, amount: 100n }],
+        [targetPool],
+        100n
+      );
+      expect(result.encodedCalls).toHaveLength(2);
+      expect(result.sourceAmounts).toEqual([100n]);
+      expect(result.targetAmounts).toEqual([100n]);
+
+      const first = decodeMoveStake(result.encodedCalls[0]);
+      expect(first.from.status).toBe(StakeStatus.DELEGATED);
+      expect(first.to.status).toBe(StakeStatus.UNDELEGATED);
+
+      const second = decodeMoveStake(result.encodedCalls[1]);
+      expect(second.from.status).toBe(StakeStatus.UNDELEGATED);
+      expect(second.to.status).toBe(StakeStatus.DELEGATED);
+      expect(second.to.poolId).toBe(targetPool);
+    });
+
+    it('throws when rebalance amount exceeds source total', () => {
+      expect(() =>
+        buildRebalanceCalldata([{ poolId, amount: 100n }], [poolId], 200n)
+      ).toThrow('Cannot rebalance');
+    });
   });
 });

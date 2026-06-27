@@ -29,6 +29,9 @@ import { planUndelegateAndDelegate } from './operations/undelegateAndDelegate.js
 import { planStakeAndDelegate } from './operations/stakeAndDelegate.js';
 import { planWrapGovernance } from './operations/wrapGovernance.js';
 import { planWrapGovernanceLiquid } from './operations/wrapGovernanceLiquid.js';
+import { planWrapGovernanceExcludePools } from './operations/wrapGovernanceExcludePools.js';
+import { planRedelegateAll } from './operations/redelegateAll.js';
+import { planRedelegateAmount } from './operations/redelegateAmount.js';
 import {
   planTreasuryMigrationExecution,
   planTreasuryMigrationProposal,
@@ -100,6 +103,9 @@ function showDetailedHelp(): void {
     ['stake-new <wallet> <amount>', 'Stake new ZRX. Source: src/operations/stakeNew.ts'],
     ['delegate-equal <wallet> <amount> [pools...]', 'Delegate amount equally across pools. Source: src/operations/delegateEqual.ts'],
     ['redelegate <wallet> <amount> [pools...]', 'Undelegate all + delegate equally in one batch. Source: src/operations/undelegateAndDelegate.ts'],
+    ['redelegate-all <wallet> [pools...]', 'Undelegate all active stake and redelegate equally to target pools. Source: src/operations/redelegateAll.ts'],
+    ['redelegate-amount <wallet> <amount> [pools...]', 'Rebalance so target pools total a specific amount. Source: src/operations/redelegateAmount.ts'],
+    ['wrap-governance-exclude-pools <wallet> <amount>', 'Undelegate from non-target pools then wrap to wZRX. Source: src/operations/wrapGovernanceExcludePools.ts'],
     ['stake-and-delegate <wallet> <amount> [pools...]', 'Stake + delegate equally in one batch. Source: src/operations/stakeAndDelegate.ts'],
     ['unstake <wallet> <amount>', 'Unstake undelegated ZRX. Source: src/operations/unstake.ts'],
     ['wrap-governance <wallet> <amount> --delegatee <addr>', 'Full legacy-stake migration to wZRX. Source: src/operations/wrapGovernance.ts'],
@@ -339,6 +345,38 @@ baseYargs
     }
   )
   .command(
+    'redelegate-all <wallet> [pools...]',
+    'Undelegate all active stake and redelegate equally across target pools',
+    (y) =>
+      y
+        .positional('wallet', { type: 'string', demandOption: true })
+        .positional('pools', { type: 'string', array: true, default: [] }),
+    async (argv) => {
+      const pools = getPoolIds(argv as { pools?: string[] });
+      await runOperation(argv as unknown as RunOperationArgv, async (publicClient, wallet) => {
+        const { result } = await planRedelegateAll(publicClient, wallet, pools);
+        return result;
+      });
+    }
+  )
+  .command(
+    'redelegate-amount <wallet> <amount> [pools...]',
+    'Rebalance delegated stake so target pools total a specific amount',
+    (y) =>
+      y
+        .positional('wallet', { type: 'string', demandOption: true })
+        .positional('amount', { type: 'string', demandOption: true })
+        .positional('pools', { type: 'string', array: true, default: [] }),
+    async (argv) => {
+      const amount = parseZrx(argv.amount as string);
+      const pools = getPoolIds(argv as { pools?: string[] });
+      await runOperation(argv as unknown as RunOperationArgv, async (publicClient, wallet) => {
+        const { result } = await planRedelegateAmount(publicClient, wallet, amount, pools);
+        return result;
+      });
+    }
+  )
+  .command(
     'stake-and-delegate <wallet> <amount> [pools...]',
     'Stake and delegate equally in one batch',
     (y) =>
@@ -405,6 +443,33 @@ baseYargs
       const delegatee = argv.delegatee as Address;
       await runOperation(argv as unknown as RunOperationArgv, async (publicClient, wallet) =>
         planWrapGovernanceLiquid(publicClient, wallet, amount, delegatee)
+      );
+    }
+  )
+  .command(
+    'wrap-governance-exclude-pools <wallet> <amount>',
+    'Undelegate from non-target pools, end epoch, and wrap to wZRX governance',
+    (y) =>
+      y
+        .positional('wallet', { type: 'string', demandOption: true })
+        .positional('amount', { type: 'string', demandOption: true })
+        .option('exclude-pools', {
+          type: 'string',
+          array: true,
+          default: [] as string[],
+          description: 'Pool ids to preserve (bytes32)',
+        })
+        .option('delegatee', {
+          type: 'string',
+          description: 'Address to delegate wZRX voting power to',
+          demandOption: true,
+        }),
+    async (argv) => {
+      const amount = parseZrx(argv.amount as string);
+      const excludePools = parseOperatedPools(argv['exclude-pools'] as string[]);
+      const delegatee = argv.delegatee as Address;
+      await runOperation(argv as unknown as RunOperationArgv, async (publicClient, wallet) =>
+        planWrapGovernanceExcludePools(publicClient, wallet, amount, excludePools, delegatee)
       );
     }
   )
