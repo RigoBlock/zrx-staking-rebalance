@@ -1,7 +1,7 @@
 {
   "name": "zrx-staking-rebalance",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "Terminal utility to reallocate ZRX stake across specific staking pools and optionally migrate to wZRX governance.",
   "scripts": {
     "build": "forge build",
