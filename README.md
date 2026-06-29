@@ -249,7 +249,10 @@ yarn test:forge         # Foundry fork tests (requires RPC_URL)
 yarn test:foundry       # alias for test:forge
 ```
 
-Fork tests fail explicitly when `RPC_URL` is not set.
+Fork tests are pinned to the mainnet block defined by `Constants.FORK_BLOCK_NUMBER`
+so each run is reproducible. Foundry caches forked RPC state in
+`~/.foundry/cache/rpc`; in CI this directory is cached so the pinned block is only
+fetched once per PR. Tests fail explicitly when `RPC_URL` is not set.
 
 ## Security
 
@@ -259,9 +262,14 @@ See [`docs/SECURITY.md`](docs/SECURITY.md).
   `PRIVATE_KEY` only for the subprocess lifetime.
 - Prefer hardware wallets for production operations.
 - Simulate every operation before broadcasting.
-- Safe transactions are proposed/confirmed with the Safe SDK via the Safe
-  Transaction Service and executed through the Safe UI once the threshold is
-  reached.
+- Safe transactions are proposed/confirmed with `cast` + direct Safe
+  Transaction Service `curl` calls (no Safe SDK) and executed through the Safe
+  UI once the threshold is reached.
+
+## Repository access
+
+Only authorized maintainers may create branches or merge to `main`. See
+[`BRANCH_PROTECTION.md`](BRANCH_PROTECTION.md) for the required GitHub settings.
 
 ## License
 

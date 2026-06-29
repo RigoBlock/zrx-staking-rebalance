@@ -19,7 +19,7 @@ contract OperationsTest is Test {
     bytes32[] internal targetPools;
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("RPC_URL"));
+        vm.createSelectFork(vm.envString("RPC_URL"), Constants.FORK_BLOCK_NUMBER);
         staker = vm.addr(1);
         delegatee = vm.addr(2);
         targetPools = [Constants.TARGET_POOL_31, Constants.TARGET_POOL_48, Constants.TARGET_POOL_34];

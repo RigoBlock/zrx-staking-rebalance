@@ -32,4 +32,7 @@ library Constants {
     bytes32 public constant TARGET_POOL_31 = 0x0000000000000000000000000000000000000000000000000000000000000031;
     bytes32 public constant TARGET_POOL_48 = 0x0000000000000000000000000000000000000000000000000000000000000048;
     bytes32 public constant TARGET_POOL_34 = 0x0000000000000000000000000000000000000000000000000000000000000034;
+
+    // Mainnet block pinned for reproducible fork tests. Update when on-chain state required by tests changes.
+    uint256 public constant FORK_BLOCK_NUMBER = 25_400_000;
 }
