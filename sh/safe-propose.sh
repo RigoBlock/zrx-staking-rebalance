@@ -1,16 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "$(dirname "$0")/common.sh"
+source "$(dirname "$0")/common_safe.sh"
 
-PLAN="${1:?plan.json required}"
-SAFE="${2:?Safe address required}"
-shift 2
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 <safe-address> [plan.json] [--private-key <key> | --ledger | --trezor | --signature <sig> --sender <addr>]"
+  exit 1
+fi
+
+SAFE="$1"
+shift
+
+if [ "$#" -ge 1 ] && [ -f "$1" ]; then
+  PLAN="$1"
+  shift
+else
+  PLAN="$REPO_ROOT/out/plan.json"
+fi
 
 PRIVATE_KEY=""
 SENDER=""
 LEDGER=""
 TREZOR=""
+SIGNATURE=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -30,8 +42,12 @@ while [ "$#" -gt 0 ]; do
       TREZOR="1"
       shift
       ;;
+    --signature)
+      SIGNATURE="$2"
+      shift 2
+      ;;
     *)
-      echo "Unknown option: $1"
+      echo "Unknown option: $1" >&2
       exit 1
       ;;
   esac
@@ -42,39 +58,14 @@ if [ -z "$SENDER" ] && [ -n "$PRIVATE_KEY" ]; then
 fi
 
 if [ -z "$SENDER" ]; then
-  echo "--sender <address> is required for ledger/trezor, or derive via --private-key"
+  echo "--sender <address> is required for ledger/trezor, or derive via --private-key" >&2
   exit 1
 fi
 
-CHAIN_ID="$(cast chain-id --rpc-url "$RPC_URL")"
-
-# Pick Safe Transaction Service URL based on chain id if not provided.
-if [ -z "${SAFE_TX_SERVICE_URL:-}" ]; then
-  case "$CHAIN_ID" in
-    1) SAFE_TX_SERVICE_URL="https://safe-transaction-mainnet.safe.global" ;;
-    11155111) SAFE_TX_SERVICE_URL="https://safe-transaction-sepolia.safe.global" ;;
-    *)
-      echo "Unknown chain id $CHAIN_ID; set SAFE_TX_SERVICE_URL"
-      exit 1
-      ;;
-  esac
-fi
-
-SIGNER_FLAGS=()
-if [ -n "$PRIVATE_KEY" ]; then
-  SIGNER_FLAGS+=(--private-key "$PRIVATE_KEY")
-fi
-if [ -n "$LEDGER" ]; then
-  SIGNER_FLAGS+=(--ledger)
-fi
-if [ -n "$TREZOR" ]; then
-  SIGNER_FLAGS+=(--trezor)
-fi
-
 STEPS="$(jq length "$PLAN")"
-NONCE="$(curl -s "$SAFE_TX_SERVICE_URL/api/v1/safes/$SAFE/" | jq -r '.nonce')"
+NONCE="$(cast call --rpc-url "$RPC_URL" "$SAFE" 'nonce()(uint256)')"
 
-echo "Proposing $STEPS transaction(s) to Safe $SAFE (chain $CHAIN_ID, nonce $NONCE)"
+echo "Proposing $STEPS transaction(s) to Safe $SAFE (nonce $NONCE)"
 
 for ((i = 0; i < STEPS; i++)); do
   TO="$(jq -r ".[$i].to" "$PLAN")"
@@ -84,60 +75,21 @@ for ((i = 0; i < STEPS; i++)); do
 
   echo ""
   echo "[$((i + 1))/$STEPS] $DESCRIPTION"
-  echo "  to: $TO"
-  echo "  value: $VALUE"
 
-  SAFE_TX_JSON=$(forge script "$REPO_ROOT/script/SafeTx.s.sol:SafeTx" \
-    --rpc-url "$RPC_URL" \
-    --sig "run(address,address,uint256,bytes,uint8,uint256)" \
-    "$SAFE" "$TO" "$VALUE" "$DATA" 0 "$NONCE" 2>&1 | \
-    awk '/---SAFE_TX_JSON_START---/{flag=1;next}/---SAFE_TX_JSON_END---/{flag=0}flag')
-
-  if [ -z "$SAFE_TX_JSON" ]; then
-    echo "ERROR: could not extract Safe transaction JSON from script output" >&2
-    exit 1
-  fi
-
-  SAFE_TX_HASH="$(echo "$SAFE_TX_JSON" | jq -r '.safeTxHash')"
+  SAFE_TX_HASH="$(safe_tx_hash "$SAFE" "$TO" "$VALUE" "$DATA" 0 "$NONCE")"
   echo "  safeTxHash: $SAFE_TX_HASH"
 
-  SIGNATURE="$(cast wallet sign "${SIGNER_FLAGS[@]}" --no-hash "$SAFE_TX_HASH")"
+  if [ -n "$SIGNATURE" ]; then
+    SIG="$SIGNATURE"
+  else
+    SIGNER_FLAGS=()
+    [ -n "$PRIVATE_KEY" ] && SIGNER_FLAGS+=(--private-key "$PRIVATE_KEY")
+    [ -n "$LEDGER" ] && SIGNER_FLAGS+=(--ledger --from "$SENDER")
+    [ -n "$TREZOR" ] && SIGNER_FLAGS+=(--trezor --from "$SENDER")
+    SIG="$(cast wallet sign "${SIGNER_FLAGS[@]}" --no-hash "$SAFE_TX_HASH")"
+  fi
 
-  PAYLOAD=$(jq -n \
-    --arg to "$TO" \
-    --arg value "$VALUE" \
-    --arg data "$DATA" \
-    --arg operation "0" \
-    --arg safeTxGas "0" \
-    --arg baseGas "0" \
-    --arg gasPrice "0" \
-    --arg gasToken "0x0000000000000000000000000000000000000000" \
-    --arg refundReceiver "0x0000000000000000000000000000000000000000" \
-    --arg nonce "$NONCE" \
-    --arg contractTransactionHash "$SAFE_TX_HASH" \
-    --arg sender "$SENDER" \
-    --arg signature "$SIGNATURE" \
-    --arg origin "zrx-staking-rebalance" \
-    '{
-      to: $to,
-      value: $value,
-      data: $data,
-      operation: ($operation | tonumber),
-      safeTxGas: $safeTxGas,
-      baseGas: $baseGas,
-      gasPrice: $gasPrice,
-      gasToken: $gasToken,
-      refundReceiver: $refundReceiver,
-      nonce: ($nonce | tonumber),
-      contractTransactionHash: $contractTransactionHash,
-      sender: $sender,
-      signature: $signature,
-      origin: $origin
-    }')
-
-  curl -s -X POST "$SAFE_TX_SERVICE_URL/api/v1/safes/$SAFE/multisig-transactions/" \
-    -H "Content-Type: application/json" \
-    -d "$PAYLOAD" | jq .
+  safe_propose "$SAFE" "$TO" "$VALUE" "$DATA" 0 "$NONCE" "$SENDER" "$SIG" | jq .
 
   NONCE=$((NONCE + 1))
 done

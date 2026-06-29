@@ -3,10 +3,11 @@ set -euo pipefail
 
 export REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Remember any user-provided values so they take precedence over .env.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/constants.sh"
+
+# Remember any user-provided RPC_URL so it takes precedence over .env.
 USER_RPC_URL="${RPC_URL:-}"
-USER_SAFE_TX_SERVICE_URL="${SAFE_TX_SERVICE_URL:-}"
-USER_CHAIN_ID="${CHAIN_ID:-}"
 
 if [ -f "$REPO_ROOT/.env" ]; then
   # shellcheck source=/dev/null
@@ -14,8 +15,6 @@ if [ -f "$REPO_ROOT/.env" ]; then
 fi
 
 [ -n "$USER_RPC_URL" ] && export RPC_URL="$USER_RPC_URL"
-[ -n "$USER_SAFE_TX_SERVICE_URL" ] && export SAFE_TX_SERVICE_URL="$USER_SAFE_TX_SERVICE_URL"
-[ -n "$USER_CHAIN_ID" ] && export CHAIN_ID="$USER_CHAIN_ID"
 
 : "${RPC_URL:?RPC_URL must be set as an environment variable or in .env}"
 

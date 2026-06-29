@@ -47,14 +47,22 @@ broadcasting. The interactive `yarn op` runner also offers a "Simulate" mode.
 
 ## Safe Transaction Service
 
-Safe transactions are proposed with `sh/safe-propose.sh`. It builds each Safe
-transaction using `script/SafeTx.s.sol`, signs the Safe transaction hash with
-`cast wallet sign`, and POSTs it to the Safe Transaction Service. Additional
-owners can confirm via `sh/safe-confirm.sh` or directly in the Safe UI. Once the
-threshold is reached, execute the transaction in the Safe UI.
+Safe transactions are proposed with `sh/safe-propose.sh` and confirmed with
+`sh/safe-confirm.sh`. They follow the same pattern 0x Settler uses:
 
-The plan JSON written by `WRITE_PLAN=1` is a local convenience artifact and
-never contains private keys.
+- The Safe transaction hash is computed by calling the Safe contract with
+  `cast call getTransactionHash(...)`.
+- The hash is signed with `cast wallet sign --no-hash`.
+- The signed payload is POSTed to the Safe Transaction Service URL defined in
+  `sh/constants.sh` (mainnet only).
+
+No Safe SDK or Node runtime is involved; the flow is pure Foundry/shell.
+
+For hardware wallets, sign the `safeTxHash` offline with `cast wallet sign --no-hash`
+and pass `--signature <sig> --sender <owner>` to the scripts.
+
+The plan JSON written by `WRITE_PLAN=1` is a local convenience artifact and never
+contains private keys.
 
 ## Audit status
 

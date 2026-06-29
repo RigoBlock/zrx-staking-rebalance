@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Terminal utility to reallocate ZRX stake across specific staking pools and optionally migrate to wZRX governance.",
-  "type": "module",
   "scripts": {
     "build": "forge build",
     "lint": "forge lint",
+    "test:foundry": "forge test",
     "op": "./sh/op.sh",
     "op:stake-delegate": "./sh/stake-and-delegate.sh",
     "op:sim:stake-delegate": "DRY_RUN=1 ./sh/stake-and-delegate.sh",
@@ -21,10 +21,7 @@
     "op:sim:wrap": "DRY_RUN=1 ./sh/wrap-governance.sh",
     "op:treasury": "./sh/treasury.sh",
     "op:sim:treasury": "DRY_RUN=1 ./sh/treasury.sh",
-    "test:forge": "forge test",
-    "test:foundry": "forge test"
-  },
-  "engines": {
-    "node": ">=20.0.0"
+    "safe:propose": "./sh/safe-propose.sh",
+    "safe:confirm": "./sh/safe-confirm.sh"
   }
 }

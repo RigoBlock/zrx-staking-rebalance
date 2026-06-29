@@ -18,8 +18,11 @@ script/                   # Foundry Solidity scripts
   Redelegate.s.sol
   WrapGovernance.s.sol
   TreasuryMigration.s.sol
-  SafeTx.s.sol            # Build a single Safe transaction + hash
-sh/                       # Bash wrappers and the interactive runner
+sh/                       # Bash wrappers, Safe helpers, constants, and the interactive runner
+  common_safe.sh          # Safe hash/sign/post helpers
+  constants.sh            # Safe-related constants
+  safe-propose.sh         # Propose a plan to a Safe
+  safe-confirm.sh         # Confirm a Safe transaction
 src/interfaces/           # Minimal Solidity contract interfaces
 test/
   Operations.t.sol        # Foundry fork tests
@@ -27,8 +30,7 @@ test/
 
 ## Install
 
-Requires [Foundry](https://book.getfoundry.sh/). Yarn is optional and only used
-as a convenience wrapper for the package scripts.
+Requires [Foundry](https://book.getfoundry.sh/).
 
 ```bash
 # Install / update Foundry libraries
@@ -51,7 +53,19 @@ cp .env.example .env
 | Variable | Purpose |
 |----------|---------|
 | `RPC_URL` | Ethereum JSON-RPC endpoint (required) |
-| `SAFE_TX_SERVICE_URL` | Optional override for Safe Transaction Service |
+
+## Key addresses
+
+All on-chain addresses live in `script/Constants.sol`.
+
+- `OLD_ZRX_TREASURY` and `NEW_ZRX_TREASURY` are the 0x governance treasury
+  **contracts** (timelock/Governor style), not Safe wallets.
+- `LEGACY_STAKE_SAFE_OWNER` (`0x5775afA796818ADA27b09FaF5c90d101f04eF600`) is
+  the Safe multisig that owns the delegated stake in the legacy ZRX staking
+  system.
+- `OX_LABS_DEPLOYMENT_SAFE` (`0x8E5DE7118a596E99B0563D3022039c11927f4827`) is
+  the new 0x Labs deployment Safe (taken from 0x Settler's mainnet
+  `chain_config.json`).
 
 ## Run an operation
 
@@ -151,22 +165,26 @@ cat out/plan.json
 Propose the plan to a Safe:
 
 ```bash
-./sh/safe-propose.sh out/plan.json 0x<safeAddress> --private-key 0x...
+./sh/safe-propose.sh 0x<safeAddress> out/plan.json --private-key 0x...
 # or with a hardware wallet
-./sh/safe-propose.sh out/plan.json 0x<safeAddress> --ledger --sender 0x<ownerAddress>
+./sh/safe-propose.sh 0x<safeAddress> out/plan.json --ledger --sender 0x<ownerAddress>
+# or pass an offline signature
+SIG=$(cast wallet sign --no-hash 0x<safeTxHash>)
+./sh/safe-propose.sh 0x<safeAddress> out/plan.json --signature $SIG --sender 0x<ownerAddress>
 ```
 
-`sh/safe-propose.sh` reads the plan, builds each Safe transaction with
-`script/SafeTx.s.sol`, signs the Safe transaction hash with `cast wallet sign`,
-and posts it to the Safe Transaction Service. Each plan step becomes a separate
-Safe transaction.
+`sh/safe-propose.sh` computes the Safe transaction hash through the Safe
+contract, signs it with `cast wallet sign`, and POSTs it to the Safe Transaction
+Service. Each plan step becomes a separate Safe transaction. The service URL is a
+constant in `sh/constants.sh` (mainnet only).
 
 Additional owners can confirm the proposal from the command line:
 
 ```bash
 ./sh/safe-confirm.sh 0x<safeAddress> 0x<safeTxHash> --private-key 0x...
 # or with a hardware wallet
-./sh/safe-confirm.sh 0x<safeAddress> 0x<safeTxHash> --ledger --sender 0x<ownerAddress>
+SIG=$(cast wallet sign --no-hash 0x<safeTxHash>)
+./sh/safe-confirm.sh 0x<safeAddress> 0x<safeTxHash> --signature $SIG --sender 0x<ownerAddress>
 ```
 
 Once the threshold is reached, execute the transaction in the Safe UI.
@@ -186,6 +204,7 @@ Always simulate first with `yarn op:sim:*` or `DRY_RUN=1`.
 
 ```bash
 yarn build              # Compile Foundry scripts
+yarn lint               # Run forge lint
 yarn test:forge         # Foundry fork tests (requires RPC_URL)
 yarn test:foundry       # alias for test:forge
 ```
@@ -200,8 +219,9 @@ See [`docs/SECURITY.md`](docs/SECURITY.md).
   `PRIVATE_KEY` only for the subprocess lifetime.
 - Prefer hardware wallets for production operations.
 - Simulate every operation before broadcasting.
-- Safe transactions are proposed/confirmed via the Safe Transaction Service and
-  executed through the Safe UI once the threshold is reached.
+- Safe transactions are proposed/confirmed with the Safe SDK via the Safe
+  Transaction Service and executed through the Safe UI once the threshold is
+  reached.
 
 ## License
 
