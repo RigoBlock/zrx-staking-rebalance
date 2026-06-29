@@ -7,3 +7,8 @@ data/safe-txs/*.json
 !.gitkeep
 coverage/
 .DS_Store
+# Foundry
+out/
+cache/
+lib/
+broadcast/

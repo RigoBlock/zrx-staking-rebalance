@@ -1,49 +1,66 @@
 # Governance Migration
 
 The new 0x governance model uses a wrapped ZRX token (`wZRX`) that delegates
-voting power to a chosen address. This project provides two migration paths.
+voting power to a chosen address. This project provides three migration paths.
 
-## 1. Full legacy-stake migration (`wrap-governance`)
+## 1. Full legacy-stake migration (`wrap full`)
 
-For ZRX that is currently staked/delegated in the legacy 0x staking system,
-`wrap-governance` performs the complete migration in one command:
-
-```bash
-yarn cli wrap-governance <wallet> <amount> --delegatee <delegatee-address>
-```
-
-The planner builds the following sequence:
-
-1. **Undelegate all** delegated stake via the Rigoblock TupleFixer.
-2. **Assert** that `unstake(amount)` reverts before the epoch ends.
-3. **Call `endEpoch()`** once the epoch has actually ended on-chain.
-4. **Atomically** `unstake`, `approve(ZRX, wZRX, amount)`, `wZRX.depositFor`,
-   `wZRX.delegate(delegatee)`, and reset the ZRX approval.
-
-For Safe wallets the whole sequence is bundled into one Safe transaction. For
-EOA wallets the transactions are sent sequentially.
-
-The command will refuse to proceed if the staking epoch has not ended yet. On
-mainnet you must wait until `currentEpochStartTimeInSeconds + epochDurationInSeconds`
-has passed; anyone can then call `endEpoch()`.
-
-## 2. Liquid-only wrap (`wrap-governance-liquid`)
-
-If the ZRX is already unstaked and sitting in the wallet as ERC-20 balance,
-use the liquid-only variant:
+For ZRX that is currently staked/delegated in the legacy 0x staking system:
 
 ```bash
-yarn cli wrap-governance-liquid <wallet> <amount> --delegatee <delegatee-address>
+yarn op:wrap full <staker> <delegatee> <amount>
 ```
 
-This does **not** undelegate or unstake anything. It only performs:
+Or interactively:
+
+```bash
+yarn op
+# choose wrap → full
+```
+
+The script performs:
+
+1. **Undelegate all** delegated stake.
+2. **Advance the epoch** and call `endEpoch()`.
+3. **Atomically** `unstake(amount)`, `approve(ZRX, wZRX, amount)`,
+   `wZRX.depositFor(staker, amount)`, `wZRX.delegate(delegatee)`, and reset the
+   ZRX approval.
+
+Simulate first:
+
+```bash
+yarn op:sim:wrap full <staker> <delegatee> <amount>
+```
+
+## 2. Liquid-only wrap (`wrap liquid`)
+
+If the ZRX is already unstaked and sitting in the wallet as ERC-20 balance:
+
+```bash
+yarn op:wrap liquid <staker> <delegatee> <amount>
+```
+
+This only performs:
 
 1. `approve(ZRX, wZRX, amount)`
-2. `wZRX.depositFor(account, amount)`
+2. `wZRX.depositFor(staker, amount)`
 3. `wZRX.delegate(delegatee)`
 4. `approve(ZRX, wZRX, 0)`
 
-## 3. Old treasury migration
+## 3. Exclude-pools wrap (`wrap exclude-pools`)
+
+To keep some pools delegated while moving the rest to wZRX:
+
+```bash
+yarn op:wrap exclude-pools <staker> <delegatee> <amount> \
+  <pool-to-exclude>...
+```
+
+The script undelegates from every pool except the excluded ones, advances the
+epoch, calls `endEpoch()`, unstakes the requested amount, then wraps and
+delegates it.
+
+## 4. Old treasury migration
 
 The old 0x treasury at `0x0bb1810061c2f5b2088054ee184e6c79e1591101` holds
 assets that can only be moved through passed governance proposals. To migrate
@@ -51,7 +68,7 @@ them to the new governance treasury (`ZeroExTreasuryGovernor` at
 `0x4822cfc1e7699bdb9551bdfd3a838ee414bc2008`), first propose:
 
 ```bash
-yarn cli treasury-migrate-propose <proposer-wallet> [--operated-pools <pool-id>...]
+yarn op:treasury propose <proposer> [<operated-pool>...]
 ```
 
 This creates a ZrxTreasury proposal whose actions move:
@@ -64,11 +81,11 @@ This creates a ZrxTreasury proposal whose actions move:
 After the proposal passes and reaches its execution epoch, run:
 
 ```bash
-yarn cli treasury-migrate-execute <wallet> <proposalId>
+yarn op:treasury execute <proposer> <proposalId>
 ```
 
 The proposer must have at least `proposalThreshold` voting power in the old
-treasury. Pass any pools you operate with `--operated-pools`.
+treasury. Pass any operated pools when proposing.
 
 ## Contracts
 

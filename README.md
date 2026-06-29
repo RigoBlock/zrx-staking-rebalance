@@ -1,65 +1,42 @@
 # zrx-staking-rebalance
 
-A terminal utility to reallocate ZRX staking positions across specific staking
-pools and optionally migrate ZRX to the new wrapped-ZRX governance token.
+A utility to reallocate 0x (ZRX) staking positions across specific staking pools
+and optionally migrate ZRX to the wrapped-ZRX governance token.
 
-> **Status**: implementation complete. The Rigoblock TupleFixer address and the
-> 0x ERC20 Asset Proxy address are now configured for mainnet. Hardware-wallet
-> code uses real SDKs but should be validated with physical devices before
-> mainnet use. See [`docs/MOCKS.md`](docs/MOCKS.md) for any remaining caveats.
+Operations are implemented as native Foundry scripts in `script/*.s.sol` and can
+be run through the interactive runner (`yarn op`), per-action package scripts,
+or the shell wrappers directly.
 
 ## Project structure
 
 ```
-src/
-  cli.ts              # CLI entry point and command wiring
-  cli/
-    helpers.ts        # Wallet resolution, simulation, EOA sending, Safe backup
-    menu.ts           # Interactive menu mode
-  config/
-    constants.ts      # Mainnet contract addresses and ABIs
-    pools.ts          # Target pool id ↔ operator mapping
-  contracts/
-    staking.ts        # Staking proxy calldata encoders + epoch reads
-    treasury.ts       # Old ZrxTreasury + Polygon migration helpers
-    tupleFixer.ts     # Rigoblock TupleFixer integration
-    zrx.ts            # ZRX ERC20 approval helpers
-    wzrx.ts           # Wrapped ZRX governance helpers
-  ethereum/
-    client.ts         # Viem public/wallet client factory (with retry)
-    multicall.ts      # Batched on-chain reads with serial fallback
-    retry.ts          # Bounded async retry helper
-    signer.ts         # Secure private-key prompt and wipe
-    hardware.ts       # Ledger / Trezor account wrappers
-  operations/
-    undelegateAll.ts
-    stakeNew.ts
-    delegateEqual.ts
-    undelegateAndDelegate.ts
-    stakeAndDelegate.ts
-    unstake.ts
-    treasuryMigrate.ts
-    wrapGovernance.ts
-    wrapGovernanceLiquid.ts
-  safe/
-    kit.ts            # Safe SDK initialization + version warning
-    transaction.ts    # Propose / confirm / execute Safe transactions
-    decoder.ts        # Human-readable calldata decoder
-tests/
-  unit/               # Pure-function and encoding tests
-  integration/        # Mainnet fork tests (run with RPC_URL)
+script/                   # Foundry Solidity scripts
+  Constants.sol           # Mainnet addresses and target pool ids
+  LibStaking.sol          # Pure staking calldata helpers
+  LibScript.sol           # Shared script utilities (env, plan JSON)
+  StakeAndDelegate.s.sol
+  Redelegate.s.sol
+  WrapGovernance.s.sol
+  TreasuryMigration.s.sol
+  SafeTx.s.sol            # Build a single Safe transaction + hash
+sh/                       # Bash wrappers and the interactive runner
+src/interfaces/           # Minimal Solidity contract interfaces
+test/
+  Operations.t.sol        # Foundry fork tests
 ```
 
 ## Install
 
-Requires Node.js ≥ 20 and [Yarn](https://yarnpkg.com).
+Requires [Foundry](https://book.getfoundry.sh/). Yarn is optional and only used
+as a convenience wrapper for the package scripts.
 
 ```bash
-# Install dependencies
-yarn install
+# Install / update Foundry libraries
+./sh/install-foundry-deps.sh
 
-# Run the CLI through tsx (no build step required)
-yarn cli --help
+# Compile Solidity
+yarn build
+# or: forge build
 ```
 
 ## Configuration
@@ -75,162 +52,156 @@ cp .env.example .env
 |----------|---------|
 | `RPC_URL` | Ethereum JSON-RPC endpoint (required) |
 | `SAFE_TX_SERVICE_URL` | Optional override for Safe Transaction Service |
-| `CHAIN_ID` | Optional override (defaults to 1) |
 
+## Run an operation
 
-## Usage
-
-### Help
+### Interactive runner (recommended)
 
 ```bash
-yarn cli help
+yarn op
 ```
 
-### Interactive menu
+This prompts for:
+
+1. Operation (stake-delegate, delegate-equal, redelegate, wrap, treasury)
+2. Staker / proposer address
+3. Operation parameters (amount, pools, mode, delegatee, etc.)
+4. Signer (private key, Ledger, Trezor, or mnemonic)
+5. Simulate or execute
+
+The runner prints a summary, streams the forge output to the terminal, and
+never logs the private key.
+
+### Per-action scripts
+
+Most operations have three package scripts:
+
+- `op:<name>` — execute (broadcast)
+- `op:sim:<name>` — simulate (`DRY_RUN=1`)
+- `op:plan:<name>` — write a JSON plan to `out/plan.json` (`WRITE_PLAN=1`)
+
+Plan mode is available for the staking/redelegation operations. Wrap and
+treasury operations support simulate and execute, but not plan output, because
+they include time-dependent or governance-specific steps.
+
+Examples:
 
 ```bash
-yarn cli menu
-```
+# Stake 1,000,000 ZRX and delegate equally across the 3 target pools
+yarn op:stake-delegate 0x... 1000000
 
-### EOA operations
+# Simulate first
+yarn op:sim:stake-delegate 0x... 1000000
 
-```bash
-# Undelegate all stake (dry-run first)
-yarn cli undelegate-all 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B --dry-run
+# Write a plan JSON instead of broadcasting
+yarn op:plan:stake-delegate 0x... 1000000
 
-# Stake 1,000,000 ZRX
-yarn cli stake-new 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 1000000
+# Delegate 1,000,000 ZRX of existing undelegated stake equally across target pools
+yarn op:delegate-equal 0x... 1000000
 
-# Delegate 3,000,000 ZRX equally across the 3 target pools
-yarn cli delegate-equal 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000
-
-# Atomic undelegate + redelegate
-yarn cli redelegate 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000
+# Undelegate all active stake
+yarn op:redelegate undelegate-all 0x...
 
 # Undelegate all active stake and redelegate equally to target pools
-yarn cli redelegate-all 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
+yarn op:redelegate redelegate-all 0x...
 
 # Rebalance so the target pools total exactly 2,000,000 ZRX
-yarn cli redelegate-amount 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 2000000
+yarn op:redelegate redelegate-amount 0x... 2000000
 
-# Atomic stake + delegate
-yarn cli stake-and-delegate 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000
+# Wrap already-liquid ZRX into wZRX governance and delegate
+yarn op:wrap liquid 0x... 0x... 1000000
 
-`stake-new` and `stake-and-delegate` automatically approve the 0x ERC20 Asset
-Proxy (`0x95e6f48254609a6ee006f7d493c8e5fb97094cef`) before staking and reset
-the allowance to 0 immediately afterward.
+# Full legacy-stake migration: undelegate all, advance epoch, unstake, wrap, delegate
+yarn op:wrap full 0x... 0x... 1000000
 
-# Unstake undelegated ZRX (must wait an epoch after undelegating)
-yarn cli unstake 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 1000000
-
-# Full legacy-stake migration to wZRX governance
-# (undelegate all -> endEpoch -> unstake -> wrap -> delegate -> reset approval)
-yarn cli wrap-governance 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000 --delegatee 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
-
-# Wrap already-liquid (unstaked) ZRX into wZRX governance
-yarn cli wrap-governance-liquid 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 3000000 --delegatee 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
-
-# Undelegate from non-target pools, end the epoch, and wrap to wZRX governance
-yarn cli wrap-governance-exclude-pools 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 2000000 \
-  --exclude-pools 0x0000000000000000000000000000000000000000000000000000000000000031 \
-  --delegatee 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
+# Undelegate from non-target pools, advance epoch, unstake, wrap, delegate
+yarn op:wrap exclude-pools 0x... 0x... 1000000 \
+  0x0000000000000000000000000000000000000000000000000000000000000031
 
 # Propose migrating old ZRX treasury assets to the new governance treasury
-yarn cli treasury-migrate-propose 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B
+yarn op:treasury propose 0x...
 
 # Execute the proposal after it has passed
-yarn cli treasury-migrate-execute 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B <proposalId>
+yarn op:treasury execute 0x... <proposalId>
 ```
 
-Add a 4th pool by appending its bytes32 id:
+Default target pools are `0x31`, `0x48`, `0x34`. Override by appending pool ids:
 
 ```bash
-yarn cli delegate-equal 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B 4000000 0x0000000000000000000000000000000000000000000000000000000000000032
+yarn op:redelegate redelegate-all 0x... 0x31 0x48 0x32
 ```
 
-### Safe operations
-
-The CLI detects Safe wallets by contract bytecode or the hardcoded Safe address.
-Use `--force-safe` to force Safe mode.
+### Direct shell usage
 
 ```bash
-# Create/propose an undelegate-all Safe transaction
-yarn cli undelegate-all 0x5775afA796818ADA27b09FaF5c90d101f04eF600
-
-# List pending Safe transactions
-yarn cli safe pending 0x5775afA796818ADA27b09FaF5c90d101f04eF600
-
-# Show a single Safe transaction and its signatures
-yarn cli safe show 0x5775afA796818ADA27b09FaF5c90d101f04eF600 <safeTxHash>
-
-# Sign a pending transaction (prompts for Safe owner key)
-yarn cli safe sign 0x5775afA796818ADA27b09FaF5c90d101f04eF600 <safeTxHash>
-
-# Execute once threshold is met (prompts for executor key)
-yarn cli safe execute 0x5775afA796818ADA27b09FaF5c90d101f04eF600 <safeTxHash>
+PRIVATE_KEY=0x... ./sh/stake-and-delegate.sh 0x... 1000000
+LEDGER=1 ./sh/redelegate.sh redelegate-all 0x...
+WRITE_PLAN=1 ./sh/wrap-governance.sh liquid 0x... 0x... 1000
 ```
 
-### Hardware wallets
+### Plans and Safe transactions
 
-The CLI prepares transactions and sends them to the device for signing. The
-device never broadcasts; after you confirm on the device, the CLI submits the
-signature or signed transaction through the RPC / Safe Transaction Service.
-
-Before running a hardware-wallet command:
-
-1. Connect the device to this machine.
-2. Unlock it and open the Ethereum app.
-3. Verify the derived address on the first run.
+Generate a JSON plan without broadcasting:
 
 ```bash
-# Ledger
-yarn cli undelegate-all 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B --signer-mode ledger
-
-# Trezor
-yarn cli undelegate-all 0xE1bdcd3B70e077D2d66ADcbe78be3941F0BF380B --signer-mode trezor
+WRITE_PLAN=1 yarn op:stake-delegate 0x... 1000000
+cat out/plan.json
 ```
 
-Always test with `--dry-run` or on a mainnet fork first.
+Propose the plan to a Safe:
+
+```bash
+./sh/safe-propose.sh out/plan.json 0x<safeAddress> --private-key 0x...
+# or with a hardware wallet
+./sh/safe-propose.sh out/plan.json 0x<safeAddress> --ledger --sender 0x<ownerAddress>
+```
+
+`sh/safe-propose.sh` reads the plan, builds each Safe transaction with
+`script/SafeTx.s.sol`, signs the Safe transaction hash with `cast wallet sign`,
+and posts it to the Safe Transaction Service. Each plan step becomes a separate
+Safe transaction.
+
+Additional owners can confirm the proposal from the command line:
+
+```bash
+./sh/safe-confirm.sh 0x<safeAddress> 0x<safeTxHash> --private-key 0x...
+# or with a hardware wallet
+./sh/safe-confirm.sh 0x<safeAddress> 0x<safeTxHash> --ledger --sender 0x<ownerAddress>
+```
+
+Once the threshold is reached, execute the transaction in the Safe UI.
+
+## Hardware wallets
+
+Foundry supports hardware wallets natively:
+
+```bash
+LEDGER=1 yarn op:redelegate redelegate-all 0x...
+TREZOR=1 yarn op:wrap liquid 0x... 0x... 1000
+```
+
+Always simulate first with `yarn op:sim:*` or `DRY_RUN=1`.
+
+## Tests
+
+```bash
+yarn build              # Compile Foundry scripts
+yarn test:forge         # Foundry fork tests (requires RPC_URL)
+yarn test:foundry       # alias for test:forge
+```
+
+Fork tests fail explicitly when `RPC_URL` is not set.
 
 ## Security
 
 See [`docs/SECURITY.md`](docs/SECURITY.md).
 
-- Private keys are read via a hidden terminal prompt, never from argv/env.
-- Keys, wallet clients, and Safe kit references are wiped immediately after use.
-- Every transaction is simulated before signing/broadcast.
-- Close the terminal after sensitive operations.
-
-## Multisig transaction sharing
-
-When a Safe transaction is proposed, the CLI:
-
-1. Proposes it to the Safe Transaction Service (so co-signers can sign in the
-   Safe UI or via this CLI).
-2. Writes a local JSON backup to `data/safe-txs/<safe>-<safeTxHash>.json`.
-
-The **Safe Transaction Service is the authoritative source of truth**. The local
-JSON backup is only a convenience and never contains private keys.
-
-## Safe 1.1.1 note
-
-The Safe at `0x5775afA796818ADA27b09FaF5c90d101f04eF600` is a Gnosis Safe
-v1.1.1. The script prints a warning because v1.1.1 is behind the current LTS
-(1.4.1/1.5.x) and has a known setup-time `delegatecall` issue reported by
-OpenZeppelin in March 2020. Consider upgrading the Safe singleton before
-high-value operations.
-
-## Tests
-
-```bash
-yarn install            # Install dependencies
-yarn build              # TypeScript typecheck
-yarn lint               # ESLint
-yarn test               # Unit tests only
-yarn test:foundry       # Unit + mainnet fork integration tests (reads RPC_URL from .env)
-```
-
-Fork integration tests are skipped automatically when `RPC_URL` is not set. Add `RPC_URL=` to `.env` to run them locally.
+- Private keys are prompted (hidden) by the interactive runner or supplied via
+  `PRIVATE_KEY` only for the subprocess lifetime.
+- Prefer hardware wallets for production operations.
+- Simulate every operation before broadcasting.
+- Safe transactions are proposed/confirmed via the Safe Transaction Service and
+  executed through the Safe UI once the threshold is reached.
 
 ## License
 

@@ -1,0 +1,132 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import {Test} from "forge-std/Test.sol";
+import {Constants} from "../script/Constants.sol";
+import {LibStaking} from "../script/LibStaking.sol";
+import {StakeAndDelegate} from "../script/StakeAndDelegate.s.sol";
+import {Redelegate} from "../script/Redelegate.s.sol";
+import {WrapGovernance} from "../script/WrapGovernance.s.sol";
+import {IERC20} from "../src/interfaces/IERC20.sol";
+import {IwZRX} from "../src/interfaces/IwZRX.sol";
+import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
+
+contract OperationsTest is Test {
+    address internal staker;
+    address internal delegatee;
+    bytes32[] internal targetPools;
+
+    function setUp() public {
+        vm.createSelectFork(vm.envString("RPC_URL"));
+        staker = vm.addr(1);
+        delegatee = vm.addr(2);
+        targetPools = [Constants.TARGET_POOL_31, Constants.TARGET_POOL_48, Constants.TARGET_POOL_34];
+    }
+
+    function testStakeAndDelegate() public {
+        _giveZrx(staker, 1000 ether);
+        vm.deal(staker, 10 ether);
+
+        bytes32[] memory pools = new bytes32[](2);
+        pools[0] = Constants.TARGET_POOL_31;
+        pools[1] = Constants.TARGET_POOL_48;
+
+        new StakeAndDelegate().run(staker, 100 ether, 100 ether, pools);
+
+        IStakingProxy.StoredBalance memory bal31 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_31);
+        IStakingProxy.StoredBalance memory bal48 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_48);
+
+        assertEq(bal31.nextEpochBalance, 50 ether, "pool 31 delegation");
+        assertEq(bal48.nextEpochBalance, 50 ether, "pool 48 delegation");
+    }
+
+    function testRedelegateAll() public {
+        _giveZrx(staker, 1000 ether);
+        vm.deal(staker, 10 ether);
+
+        // Seed a single pool with 500 ZRX and roll the epoch so it is active.
+        bytes32[] memory seedPools = new bytes32[](1);
+        seedPools[0] = Constants.TARGET_POOL_31;
+        new StakeAndDelegate().run(staker, 500 ether, 500 ether, seedPools);
+        _rollEpoch();
+
+        // Redelegate all active stake across the three target pools.
+        new Redelegate().run("redelegate-all", staker, 0, targetPools);
+
+        IStakingProxy.StoredBalance memory bal31 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_31);
+        IStakingProxy.StoredBalance memory bal48 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_48);
+        IStakingProxy.StoredBalance memory bal34 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_34);
+
+        assertEq(bal31.nextEpochBalance + bal48.nextEpochBalance + bal34.nextEpochBalance, 500 ether, "total");
+        assertGt(bal31.nextEpochBalance, 0, "pool 31");
+        assertGt(bal48.nextEpochBalance, 0, "pool 48");
+        assertGt(bal34.nextEpochBalance, 0, "pool 34");
+    }
+
+    function testWrapLiquid() public {
+        _giveZrx(staker, 1000 ether);
+        vm.deal(staker, 10 ether);
+
+        bytes32[] memory empty = new bytes32[](0);
+        new WrapGovernance().run("liquid", staker, delegatee, 50 ether, empty);
+
+        assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(staker), 50 ether, "wZRX balance");
+        assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(staker), delegatee, "delegatee");
+    }
+
+    function testWrapFull() public {
+        _giveZrx(staker, 1000 ether);
+        vm.deal(staker, 10 ether);
+
+        bytes32[] memory seedPools = new bytes32[](1);
+        seedPools[0] = Constants.TARGET_POOL_31;
+        new StakeAndDelegate().run(staker, 500 ether, 500 ether, seedPools);
+        _rollEpoch();
+
+        bytes32[] memory empty = new bytes32[](0);
+        new WrapGovernance().run("full", staker, delegatee, 500 ether, empty);
+
+        assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(staker), 500 ether, "wZRX balance");
+        assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(staker), delegatee, "delegatee");
+
+        IStakingProxy.StoredBalance memory bal31 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_31);
+        assertEq(bal31.currentEpochBalance, 0, "stake undelegated");
+    }
+
+    function testSplitEqually() public pure {
+        uint256[] memory parts = LibStaking.splitEqually(100 ether, 3);
+        assertEq(parts[0], 33333333333333333334);
+        assertEq(parts[1], 33333333333333333333);
+        assertEq(parts[2], 33333333333333333333);
+        assertEq(parts[0] + parts[1] + parts[2], 100 ether, "sum");
+    }
+
+    function testSplitByWeights() public pure {
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 75;
+        weights[1] = 25;
+        uint256[] memory parts = LibStaking.splitByWeights(100 ether, weights);
+        assertEq(parts[0], 75 ether);
+        assertEq(parts[1], 25 ether);
+    }
+
+    function _giveZrx(address account, uint256 amount) internal {
+        bytes32 slot = keccak256(abi.encode(account, uint256(0)));
+        vm.store(Constants.ZRX_TOKEN, slot, bytes32(amount));
+        assertEq(IERC20(Constants.ZRX_TOKEN).balanceOf(account), amount, "zrx balance");
+    }
+
+    function _rollEpoch() internal {
+        IStakingProxy stake = IStakingProxy(Constants.STAKING_PROXY);
+        uint256 start = stake.currentEpochStartTimeInSeconds();
+        uint256 duration = stake.epochDurationInSeconds();
+        vm.warp(start + duration + 1);
+        stake.endEpoch();
+    }
+}

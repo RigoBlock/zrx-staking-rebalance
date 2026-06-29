@@ -2,55 +2,61 @@
 
 ## Private-key handling
 
-The script never accepts a private key from command-line arguments, environment
-variables, or files. It is always collected via a hidden terminal prompt
-(`securePrompt` in `src/utils/security.ts`).
+The interactive runner (`yarn op`) never accepts a private key from command-line
+arguments or files. It is collected via a hidden terminal prompt and passed to
+the Foundry script through the `PRIVATE_KEY` environment variable only for the
+lifetime of the subprocess. The key is never logged or persisted.
 
-### Memory lifecycle
+For scripted usage you can also export `PRIVATE_KEY` yourself and call a shell
+wrapper directly:
 
-1. The user types the key; characters are echoed as `*` and stored in a local
-   string variable.
-2. `privateKeyToAccount` consumes the string to build a viem `Account`.
-3. The local string is overwritten via `wipeSecret` and the variable is allowed
-   to go out of scope.
-4. The viem `WalletClient` and `Account` references are dropped after use.
-5. For Safe operations, the protocol-kit instance is dropped via
-   `wipeKitReference` and not reused.
+```bash
+PRIVATE_KEY=0x... yarn op:stake-delegate 0x... 1000
+```
 
-Because JavaScript strings are immutable, true memory scrubbing is not
-guaranteed by the runtime. The best practical mitigation is:
+Hardware-wallet signers (`LEDGER=1`, `TREZOR=1`) and Foundry mnemonic accounts
+(`MNEMONIC_INDEX`) are also supported; the secret never leaves the device or
+Foundry's signer logic.
 
-- keep the secret in the narrowest scope possible,
-- avoid closures that capture it,
-- close the terminal process after signing.
+## Memory lifecycle
+
+- The key is typed into the interactive prompt as `*` and exported as
+  `PRIVATE_KEY` only for the lifetime of the forge subprocess.
+- When the subprocess exits, the environment variable is dropped.
+- Close the terminal process after signing high-value operations.
+
+Keep the secret in the narrowest scope possible and use a hardware wallet for
+production operations.
 
 ## Hardware wallets
 
-Ledger and Trezor support use the official Node.js SDKs
-(`src/ethereum/hardware.ts`). The private key never leaves the device. These
-paths should still be validated on a testnet or mainnet fork before mainnet use.
-
-The CLI prepares transactions, sends them to the connected device for signing,
-and then broadcasts the signed transaction (or Safe signature) through the RPC /
-Safe Transaction Service. The device itself does not broadcast.
+Ledger and Trezor are supported natively by Foundry (`--ledger`, `--trezor`).
+The private key never leaves the device. Test on a mainnet fork first and
+verify the derived address and transaction details on the device screen.
 
 ## Transaction simulation
 
-Every EOA transaction is simulated with `publicClient.estimateGas` before
-broadcast. Safe operations simulate each inner call from the Safe address
-before proposing, and `protocolKit.isValidTransaction` is checked before
-execution. A failing simulation aborts the flow before any signature is
-produced.
+Every operation should be simulated before broadcast:
+
+```bash
+yarn op:sim:stake-delegate 0x... 1000
+```
+
+The `op:sim:*` scripts set `DRY_RUN=1`, so Foundry runs the script without
+broadcasting. The interactive `yarn op` runner also offers a "Simulate" mode.
 
 ## Safe Transaction Service
 
-Proposed Safe transactions are shared via the official Safe Transaction Service.
-A local JSON backup is also written to `data/safe-txs/` as a convenience, but
-**the Safe Transaction Service is the authoritative source of truth**. These
-backups never contain private keys.
+Safe transactions are proposed with `sh/safe-propose.sh`. It builds each Safe
+transaction using `script/SafeTx.s.sol`, signs the Safe transaction hash with
+`cast wallet sign`, and POSTs it to the Safe Transaction Service. Additional
+owners can confirm via `sh/safe-confirm.sh` or directly in the Safe UI. Once the
+threshold is reached, execute the transaction in the Safe UI.
+
+The plan JSON written by `WRITE_PLAN=1` is a local convenience artifact and
+never contains private keys.
 
 ## Audit status
 
-A focused self-audit of memory cleanup and signer lifecycle is recorded in
-`docs/SECURITY_AUDIT.md`. This is not a third-party audit. Use at your own risk,
-preferably with a hardware wallet or a well-tested Safe multisig.
+This is not a third-party audit. Use at your own risk, preferably with a
+hardware wallet or a well-tested Safe multisig.
