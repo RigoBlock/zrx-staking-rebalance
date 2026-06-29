@@ -99,6 +99,32 @@ contract OperationsTest is Test {
         assertEq(bal31.currentEpochBalance, 0, "stake undelegated");
     }
 
+    function testWrapExcludePools() public {
+        _giveZrx(staker, 1000 ether);
+        vm.deal(staker, 10 ether);
+
+        bytes32[] memory seedPools = new bytes32[](2);
+        seedPools[0] = Constants.TARGET_POOL_31;
+        seedPools[1] = Constants.TARGET_POOL_48;
+        new StakeAndDelegate().run(staker, 500 ether, 500 ether, seedPools);
+        _rollEpoch();
+
+        // Exclude pool 31 from the wrap; pool 48 is the source.
+        bytes32[] memory exclude = new bytes32[](1);
+        exclude[0] = Constants.TARGET_POOL_31;
+        new WrapGovernance().run("exclude-pools", staker, delegatee, 250 ether, exclude);
+
+        assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(staker), 250 ether, "wZRX balance");
+        assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(staker), delegatee, "delegatee");
+
+        IStakingProxy.StoredBalance memory bal31 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_31);
+        IStakingProxy.StoredBalance memory bal48 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_48);
+        assertEq(bal31.currentEpochBalance, 250 ether, "excluded pool still delegated");
+        assertEq(bal48.currentEpochBalance, 0, "source pool undelegated");
+    }
+
     function testSplitEqually() public pure {
         uint256[] memory parts = LibStaking.splitEqually(100 ether, 3);
         assertEq(parts[0], 33333333333333333334);

@@ -16,17 +16,68 @@ contract Redelegate is Script {
         RedelegateAmount
     }
 
+    function plan(string calldata modeName, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
+        external
+        view
+        returns (LibScript.PlanStep[] memory)
+    {
+        Mode mode = parseMode(modeName);
+        bytes[] memory calls = _buildCalls(mode, staker, targetAmount, targetPoolIds);
+        if (calls.length == 0) {
+            return new LibScript.PlanStep[](0);
+        }
+        LibScript.PlanStep[] memory steps = new LibScript.PlanStep[](1);
+        steps[0] = LibScript.PlanStep({
+            to: Constants.STAKING_PROXY,
+            value: 0,
+            data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, calls),
+            description: "Redelegate"
+        });
+        return steps;
+    }
+
     function run(string calldata modeName, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
         external
     {
         Mode mode = parseMode(modeName);
 
+        bytes[] memory calls = _buildCalls(mode, staker, targetAmount, targetPoolIds);
+
+        if (calls.length == 0) {
+            return;
+        }
+
+        if (LibScript.envBool("WRITE_PLAN", false)) {
+            LibScript.PlanStep[] memory steps = new LibScript.PlanStep[](1);
+            steps[0] = LibScript.PlanStep({
+                to: Constants.STAKING_PROXY,
+                value: 0,
+                data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, calls),
+                description: "Redelegate"
+            });
+            LibScript.emitPlanJson(steps);
+            return;
+        }
+
+        (LibStaking.Delegation[] memory delegations, uint256 totalDelegated) =
+            LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
+
+        vm.startBroadcast(staker);
+        IStakingProxy(Constants.STAKING_PROXY).batchExecute(calls);
+        vm.stopBroadcast();
+
+        _verify(mode, staker, targetAmount, targetPoolIds, delegations, totalDelegated);
+    }
+
+    function _buildCalls(Mode mode, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
+        internal
+        view
+        returns (bytes[] memory calls)
+    {
         (LibStaking.Delegation[] memory delegations, uint256 totalDelegated) =
             LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
 
         require(totalDelegated > 0, "no delegated stake");
-
-        bytes[] memory calls;
 
         if (mode == Mode.UndelegateAll) {
             calls = buildUndelegateCalls(delegations);
@@ -37,28 +88,57 @@ contract Redelegate is Script {
             require(targetPoolIds.length > 0, "no target pools");
             calls = buildRedelegateAmountCalls(delegations, targetPoolIds, targetAmount);
         }
+    }
 
-        if (calls.length == 0) {
+    function _verify(
+        Mode mode,
+        address staker,
+        uint256 targetAmount,
+        bytes32[] calldata targetPoolIds,
+        LibStaking.Delegation[] memory beforeDelegations,
+        uint256 totalDelegatedBefore
+    ) internal view {
+        if (mode == Mode.UndelegateAll) {
+            // Every previously active delegation must be scheduled for removal.
+            for (uint256 i = 0; i < beforeDelegations.length; i++) {
+                uint256 next_ = IStakingProxy(Constants.STAKING_PROXY)
+                    .getStakeDelegatedToPoolByOwner(staker, beforeDelegations[i].poolId).nextEpochBalance;
+                require(next_ == 0, "Redelegate: undelegate-all left scheduled stake");
+            }
             return;
         }
 
-        LibScript.PlanStep[] memory steps = new LibScript.PlanStep[](1);
-        steps[0] = LibScript.PlanStep({
-            to: Constants.STAKING_PROXY,
-            value: 0,
-            data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, calls),
-            description: "Redelegate"
-        });
-
-        if (LibScript.envBool("WRITE_PLAN", false)) {
-            LibScript.emitPlanJson(steps);
-            return;
+        // For redelegate modes, no stake may remain scheduled outside the target pools.
+        for (uint256 i = 1; i <= MAX_POOL_ID; i++) {
+            bytes32 poolId = bytes32(i);
+            uint256 next_ =
+                IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, poolId).nextEpochBalance;
+            if (next_ > 0 && !_isTarget(poolId, targetPoolIds)) {
+                revert("Redelegate: non-target pool has scheduled stake");
+            }
         }
 
-        vm.startBroadcast(staker);
-        IStakingProxy(Constants.STAKING_PROXY).batchExecute(calls);
-        vm.stopBroadcast();
-
+        if (mode == Mode.RedelegateAll) {
+            uint256 expectedTotal = totalDelegatedBefore;
+            uint256[] memory parts = LibStaking.splitEqually(expectedTotal, targetPoolIds.length);
+            uint256 scheduledTotal = 0;
+            for (uint256 i = 0; i < targetPoolIds.length; i++) {
+                uint256 next_ = IStakingProxy(Constants.STAKING_PROXY)
+                    .getStakeDelegatedToPoolByOwner(staker, targetPoolIds[i]).nextEpochBalance;
+                require(next_ == parts[i], "Redelegate: redelegate-all pool amount mismatch");
+                scheduledTotal += next_;
+            }
+            require(scheduledTotal == expectedTotal, "Redelegate: redelegate-all total mismatch");
+        } else {
+            // RedelegateAmount
+            uint256 expectedTotal = targetAmount;
+            uint256 scheduledTotal = 0;
+            for (uint256 i = 0; i < targetPoolIds.length; i++) {
+                scheduledTotal += IStakingProxy(Constants.STAKING_PROXY)
+                    .getStakeDelegatedToPoolByOwner(staker, targetPoolIds[i]).nextEpochBalance;
+            }
+            require(scheduledTotal == expectedTotal, "Redelegate: redelegate-amount total mismatch");
+        }
     }
 
     function parseMode(string calldata modeName) internal pure returns (Mode) {
@@ -172,6 +252,14 @@ contract Redelegate is Script {
     }
 
     function isTarget(bytes32 poolId, bytes32[] calldata targetPoolIds)
+        internal
+        pure
+        returns (bool)
+    {
+        return _isTarget(poolId, targetPoolIds);
+    }
+
+    function _isTarget(bytes32 poolId, bytes32[] calldata targetPoolIds)
         internal
         pure
         returns (bool)

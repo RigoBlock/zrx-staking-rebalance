@@ -4,12 +4,18 @@ set -euo pipefail
 source "$(dirname "$0")/common_safe.sh"
 
 if [ "$#" -lt 1 ]; then
-  echo "Usage: $0 <safe-address> [plan.json] [--private-key <key> | --ledger | --trezor | --signature <sig> --sender <addr>]"
+  echo "Usage: $0 [<safe-address>] [plan.json] [--private-key <key> | --ledger | --trezor | --signature <sig> --sender <addr>]"
+  echo "Default Safe address: $SAFE_ADDRESS"
   exit 1
 fi
 
-SAFE="$1"
-shift
+# First positional arg is either the Safe address or the plan file/path.
+if [[ "$1" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+  SAFE="$1"
+  shift
+else
+  SAFE="$SAFE_ADDRESS"
+fi
 
 if [ "$#" -ge 1 ] && [ -f "$1" ]; then
   PLAN="$1"

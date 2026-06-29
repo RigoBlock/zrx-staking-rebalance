@@ -17,10 +17,10 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Build
-        run: yarn build
+        run: forge build
 
       - name: Lint
-        run: yarn lint
+        run: forge lint
 
       - name: Run Foundry tests
         env:
@@ -30,4 +30,4 @@ jobs:
             echo "RPC_URL secret is not set; skipping fork tests."
             exit 0
           fi
-          yarn test:foundry
+          forge test

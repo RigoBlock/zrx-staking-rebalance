@@ -17,6 +17,22 @@ library LibStaking {
         view
         returns (Delegation[] memory delegations, uint256 total)
     {
+        return _getDelegations(stakingProxy, staker, maxPoolId, true);
+    }
+
+    function getScheduledDelegations(address stakingProxy, address staker, uint256 maxPoolId)
+        internal
+        view
+        returns (Delegation[] memory delegations, uint256 total)
+    {
+        return _getDelegations(stakingProxy, staker, maxPoolId, false);
+    }
+
+    function _getDelegations(address stakingProxy, address staker, uint256 maxPoolId, bool useCurrent)
+        private
+        view
+        returns (Delegation[] memory delegations, uint256 total)
+    {
         IStakingProxy stake = IStakingProxy(stakingProxy);
         // First count non-zero delegations.
         uint256 count = 0;
@@ -24,9 +40,10 @@ library LibStaking {
             bytes32 poolId = bytes32(i);
             IStakingProxy.StoredBalance memory bal =
                 stake.getStakeDelegatedToPoolByOwner(staker, poolId);
-            if (bal.currentEpochBalance > 0) {
+            uint256 amount = useCurrent ? bal.currentEpochBalance : bal.nextEpochBalance;
+            if (amount > 0) {
                 count++;
-                total += bal.currentEpochBalance;
+                total += amount;
             }
         }
 
@@ -36,9 +53,9 @@ library LibStaking {
             bytes32 poolId = bytes32(i);
             IStakingProxy.StoredBalance memory bal =
                 stake.getStakeDelegatedToPoolByOwner(staker, poolId);
-            if (bal.currentEpochBalance > 0) {
-                delegations[idx] =
-                    Delegation({poolId: poolId, amount: bal.currentEpochBalance});
+            uint256 amount = useCurrent ? bal.currentEpochBalance : bal.nextEpochBalance;
+            if (amount > 0) {
+                delegations[idx] = Delegation({poolId: poolId, amount: amount});
                 idx++;
             }
         }

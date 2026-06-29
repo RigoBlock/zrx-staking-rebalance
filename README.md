@@ -25,7 +25,8 @@ sh/                       # Bash wrappers, Safe helpers, constants, and the inte
   safe-confirm.sh         # Confirm a Safe transaction
 src/interfaces/           # Minimal Solidity contract interfaces
 test/
-  Operations.t.sol        # Foundry fork tests
+  Operations.t.sol        # Foundry fork tests (direct script execution)
+  SafeExecution.t.sol     # Foundry fork tests (execute proposed Safe calldata)
 ```
 
 ## Install
@@ -165,12 +166,16 @@ cat out/plan.json
 Propose the plan to a Safe:
 
 ```bash
-./sh/safe-propose.sh 0x<safeAddress> out/plan.json --private-key 0x...
+# Propose to the default 0x Labs deployment Safe
+./sh/safe-propose.sh out/plan.json --private-key 0x...
 # or with a hardware wallet
-./sh/safe-propose.sh 0x<safeAddress> out/plan.json --ledger --sender 0x<ownerAddress>
+./sh/safe-propose.sh out/plan.json --ledger --sender 0x<ownerAddress>
 # or pass an offline signature
 SIG=$(cast wallet sign --no-hash 0x<safeTxHash>)
-./sh/safe-propose.sh 0x<safeAddress> out/plan.json --signature $SIG --sender 0x<ownerAddress>
+./sh/safe-propose.sh out/plan.json --signature $SIG --sender 0x<ownerAddress>
+
+# Target a different Safe by passing its address
+./sh/safe-propose.sh 0x<safeAddress> out/plan.json --private-key 0x...
 ```
 
 `sh/safe-propose.sh` computes the Safe transaction hash through the Safe
@@ -181,13 +186,41 @@ constant in `sh/constants.sh` (mainnet only).
 Additional owners can confirm the proposal from the command line:
 
 ```bash
-./sh/safe-confirm.sh 0x<safeAddress> 0x<safeTxHash> --private-key 0x...
+# Confirm for the default Safe
+./sh/safe-confirm.sh 0x<safeTxHash> --private-key 0x...
 # or with a hardware wallet
 SIG=$(cast wallet sign --no-hash 0x<safeTxHash>)
-./sh/safe-confirm.sh 0x<safeAddress> 0x<safeTxHash> --signature $SIG --sender 0x<ownerAddress>
+./sh/safe-confirm.sh 0x<safeTxHash> --signature $SIG --sender 0x<ownerAddress>
+
+# Confirm for a custom Safe
+./sh/safe-confirm.sh 0x<safeAddress> 0x<safeTxHash> --private-key 0x...
 ```
 
 Once the threshold is reached, execute the transaction in the Safe UI.
+
+### Default Safe wallet
+
+Proposals are submitted to the 0x Labs deployment Safe by default:
+
+```
+0x8E5DE7118a596E99B0563D3022039c11927f4827
+```
+
+This address is taken from 0x Settler's mainnet `chain_config.json` and is the
+`OX_LABS_DEPLOYMENT_SAFE` constant in `script/Constants.sol`. To target a
+different Safe, set the `SAFE_ADDRESS` environment variable or pass the address
+as the first argument to `safe-propose.sh` / `safe-confirm.sh`:
+
+```bash
+# Use the default Safe
+./sh/safe-propose.sh out/plan.json --private-key 0x...
+
+# Use a custom Safe
+SAFE_ADDRESS=0x... ./sh/safe-propose.sh out/plan.json --private-key 0x...
+./sh/safe-propose.sh 0x... out/plan.json --private-key 0x...
+```
+
+The default is defined in `sh/constants.sh`.
 
 ## Hardware wallets
 
