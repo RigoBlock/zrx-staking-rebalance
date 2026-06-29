@@ -35,7 +35,7 @@ jobs:
       # Only run when RPC_URL is available (fork PRs can't access the repo secret).
       - name: Cache Foundry fork state
         if: ${{ env.RPC_URL != '' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.foundry/cache/rpc
           key: foundry-rpc-${{ runner.os }}-${{ env.FORK_BLOCK }}
