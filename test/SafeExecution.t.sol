@@ -7,6 +7,8 @@ import {LibScript} from "../script/LibScript.sol";
 import {StakeAndDelegate} from "../script/StakeAndDelegate.s.sol";
 import {Redelegate} from "../script/Redelegate.s.sol";
 import {WrapGovernance} from "../script/WrapGovernance.s.sol";
+import {WrapGovernanceMultiDelegate} from "../script/WrapGovernanceMultiDelegate.s.sol";
+import {LibSafeChild} from "../script/LibSafeChild.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IwZRX} from "../src/interfaces/IwZRX.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
@@ -149,6 +151,33 @@ contract SafeExecutionTest is Test {
             IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_48);
         assertEq(bal31.currentEpochBalance, 250 ether, "excluded pool still delegated");
         assertEq(bal48.currentEpochBalance, 0, "source pool undelegated");
+    }
+
+    function testSafeWrapMultiDelegate() public {
+        _giveZrx(safe, 1000 ether);
+
+        address[] memory delegatees = new address[](3);
+        delegatees[0] = vm.addr(10);
+        delegatees[1] = vm.addr(11);
+        delegatees[2] = vm.addr(12);
+
+        uint256[] memory amounts = new uint256[](3);
+        amounts[0] = 100 ether;
+        amounts[1] = 100 ether;
+        amounts[2] = 100 ether;
+
+        LibScript.PlanStep[] memory steps =
+            new WrapGovernanceMultiDelegate().plan(safe, delegatees, amounts);
+        _executeSteps(steps, safe);
+
+        assertEq(IERC20(Constants.ZRX_TOKEN).balanceOf(safe), 700 ether, "ZRX balance");
+        assertEq(IERC20(Constants.ZRX_TOKEN).allowance(safe, Constants.WZRX_TOKEN), 0, "allowance reset");
+
+        for (uint256 i = 0; i < delegatees.length; i++) {
+            address childSafe = LibSafeChild.predictChildSafeAddress(safe, delegatees[i]);
+            assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(childSafe), amounts[i], "child Safe balance");
+            assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(childSafe), delegatees[i], "child Safe delegatee");
+        }
     }
 
     function _executeSteps(LibScript.PlanStep[] memory steps, address sender) internal {

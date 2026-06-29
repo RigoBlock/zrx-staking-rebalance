@@ -29,6 +29,12 @@ test/
   SafeExecution.t.sol     # Foundry fork tests (execute proposed Safe calldata)
 ```
 
+`WrapGovernanceMultiDelegate` wraps ZRX into wZRX and splits it across
+multiple **1-of-1 child Safe wallets** (one per delegatee). Each child Safe is
+deterministically deployed from the master Safe via the official Safe v1.3.0
+proxy factory, owned solely by the master Safe, and delegates its wZRX to the
+intended address.
+
 ## Install
 
 Requires [Foundry](https://book.getfoundry.sh/).
@@ -132,6 +138,7 @@ yarn op:wrap full 0x... 0x... 1000000
 # Undelegate from non-target pools, advance epoch, unstake, wrap, delegate
 yarn op:wrap exclude-pools 0x... 0x... 1000000 \
   0x0000000000000000000000000000000000000000000000000000000000000031
+
 
 # Propose migrating old ZRX treasury assets to the new governance treasury
 yarn op:treasury propose 0x...

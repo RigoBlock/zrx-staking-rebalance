@@ -19,6 +19,10 @@ library Constants {
     // New 0x Labs deployment Safe (from 0x Settler chain_config.json, mainnet governance.deploymentSafe).
     address public constant OX_LABS_DEPLOYMENT_SAFE = 0x8E5DE7118a596E99B0563D3022039c11927f4827;
 
+    // Safe v1.3.0 infrastructure (mainnet).
+    address public constant SAFE_SINGLETON = 0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552;
+    address public constant SAFE_PROXY_FACTORY = 0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2;
+
     // Migration-related tokens
     address public constant POLYGON_MIGRATION = 0x29e7DF7b6A1B2b07b731457f499E1696c60E2C4e;
     address public constant POL_TOKEN = 0x455e53CBB86018Ac2B8092FdCd39d8444aFFC3F6;
