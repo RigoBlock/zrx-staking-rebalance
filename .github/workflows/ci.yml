@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORK_BLOCK: 25400000
+      RPC_URL: ${{ secrets.RPC_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -33,19 +34,14 @@ jobs:
       # The key includes the pinned block number; bump FORK_BLOCK above to invalidate.
       # Only run when RPC_URL is available (fork PRs can't access the repo secret).
       - name: Cache Foundry fork state
-        if: ${{ secrets.RPC_URL != '' }}
+        if: ${{ env.RPC_URL != '' }}
         uses: actions/cache@v4
         with:
           path: ~/.foundry/cache/rpc
           key: foundry-rpc-${{ runner.os }}-${{ env.FORK_BLOCK }}
 
       - name: Run Foundry tests
+        if: ${{ env.RPC_URL != '' }}
         env:
-          RPC_URL: ${{ secrets.RPC_URL }}
           FOUNDRY_FORK_BLOCK_NUMBER: ${{ env.FORK_BLOCK }}
-        run: |
-          if [ -z "$RPC_URL" ]; then
-            echo "RPC_URL secret is not set; skipping fork tests."
-            exit 0
-          fi
-          forge test
+        run: forge test
