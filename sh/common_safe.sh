@@ -62,7 +62,7 @@ function safe_propose {
     --arg contractTransactionHash "$safe_tx_hash" \
     --arg sender "$sender" \
     --arg signature "$signature" \
-    --arg origin "${SAFE_ORIGIN:-zrx-staking-rebalance}" \
+    --arg origin "$SAFE_ORIGIN" \
     '{
       to: $to,
       value: $value,
