@@ -22,17 +22,26 @@ while [ "$#" -gt 0 ]; do
 done
 
 MODE="$1"
-STAKER="$2"
-DELEGATEE="$3"
-AMOUNT="$4"
-shift 4
+shift
 
-WEI="$(to_wei "$AMOUNT")"
-EXCLUDE_POOLS="[0x0000000000000000000000000000000000000000000000000000000000000031]"
-
-if [ "$#" -gt 0 ]; then
-  EXCLUDE_POOLS="$(build_pool_array "$@")"
-fi
+case "$MODE" in
+  unstake)
+    MODE_UINT=0
+    ;;
+  full)
+    MODE_UINT=1
+    ;;
+  liquid)
+    MODE_UINT=2
+    ;;
+  exclude-pools)
+    MODE_UINT=3
+    ;;
+  *)
+    echo "unknown wrap mode: $MODE" >&2
+    exit 1
+    ;;
+esac
 
 FLAGS=()
 if [ "$BROADCAST" = true ]; then
@@ -40,5 +49,5 @@ if [ "$BROADCAST" = true ]; then
 fi
 
 exec "$(dirname "$0")/run-forge.sh" "${FLAGS[@]}" "$REPO_ROOT/script/WrapGovernance.s.sol" \
-  --sig "run(string,address,address,uint256,bytes32[])" \
-  "$MODE" "$STAKER" "$DELEGATEE" "$WEI" "$EXCLUDE_POOLS"
+  --sig "run(uint8)" \
+  "$MODE_UINT"

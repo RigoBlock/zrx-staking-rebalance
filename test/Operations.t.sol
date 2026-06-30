@@ -44,6 +44,32 @@ contract OperationsTest is ZrxFixture {
         assertEq(bal48.nextEpochBalance, 50 ether, "pool 48 delegation");
     }
 
+    function testDelegateEqual() public {
+        _giveZrx(staker, 1000 ether);
+        vm.deal(staker, 10 ether);
+
+        // Create undelegated stake by staking directly.
+        vm.startPrank(staker);
+        IERC20(Constants.ZRX_TOKEN).approve(Constants.ERC20_PROXY, 100 ether);
+        IStakingProxy(Constants.STAKING_PROXY).stake(100 ether);
+        vm.stopPrank();
+
+        bytes32[] memory pools = new bytes32[](2);
+        pools[0] = Constants.TARGET_POOL_31;
+        pools[1] = Constants.TARGET_POOL_48;
+
+        // stakeAmount=0, delegateAmount=USE_FULL_BALANCE delegates all undelegated stake.
+        new StakeAndDelegate().run(staker, 0, type(uint256).max, pools);
+
+        IStakingProxy.StoredBalance memory bal31 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_31);
+        IStakingProxy.StoredBalance memory bal48 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_48);
+
+        assertEq(bal31.nextEpochBalance, 50 ether, "pool 31 delegation");
+        assertEq(bal48.nextEpochBalance, 50 ether, "pool 48 delegation");
+    }
+
     function testRedelegateAll() public {
         _giveZrx(staker, 1000 ether);
         vm.deal(staker, 10 ether);
@@ -55,7 +81,7 @@ contract OperationsTest is ZrxFixture {
         _rollEpoch();
 
         // Redelegate all active stake across the three target pools.
-        new Redelegate().run("redelegate-all", staker, 0, targetPools);
+        new Redelegate().run(1, staker, 0, targetPools);
 
         IStakingProxy.StoredBalance memory bal31 =
             IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_31);
@@ -75,9 +101,9 @@ contract OperationsTest is ZrxFixture {
         vm.deal(staker, 10 ether);
 
         bytes32[] memory empty = new bytes32[](0);
-        new WrapGovernance().run("liquid", staker, delegatee, 50 ether, empty);
+        new WrapGovernance().run(2, staker, delegatee, empty);
 
-        assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(staker), 50 ether, "wZRX balance");
+        assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(staker), 1000 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(staker), delegatee, "delegatee");
     }
 
@@ -91,7 +117,7 @@ contract OperationsTest is ZrxFixture {
         _rollEpoch();
 
         bytes32[] memory empty = new bytes32[](0);
-        new WrapGovernance().run("full", staker, delegatee, 500 ether, empty);
+        new WrapGovernance().run(1, staker, delegatee, empty);
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(staker), 500 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(staker), delegatee, "delegatee");
@@ -114,7 +140,7 @@ contract OperationsTest is ZrxFixture {
         // Exclude pool 31 from the wrap; pool 48 is the source.
         bytes32[] memory exclude = new bytes32[](1);
         exclude[0] = Constants.TARGET_POOL_31;
-        new WrapGovernance().run("exclude-pools", staker, delegatee, 250 ether, exclude);
+        new WrapGovernance().run(3, staker, delegatee, exclude);
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(staker), 250 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(staker), delegatee, "delegatee");

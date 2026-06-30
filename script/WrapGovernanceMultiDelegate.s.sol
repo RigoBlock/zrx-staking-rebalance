@@ -15,7 +15,15 @@ import {IwZRX} from "../src/interfaces/IwZRX.sol";
  *         factory and are owned solely by the master Safe.
  */
 contract WrapGovernanceMultiDelegate is Script {
+    function run(address[] calldata delegatees, uint256[] calldata amounts) external {
+        _run(Constants.DEFAULT_STAKER, delegatees, amounts);
+    }
+
     function run(address staker, address[] calldata delegatees, uint256[] calldata amounts) external {
+        _run(staker, delegatees, amounts);
+    }
+
+    function _run(address staker, address[] calldata delegatees, uint256[] calldata amounts) private {
         _validate(delegatees, amounts);
         uint256 total = _total(amounts);
 

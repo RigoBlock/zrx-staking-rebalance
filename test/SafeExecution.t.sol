@@ -59,7 +59,7 @@ contract SafeExecutionTest is ZrxFixture {
         new StakeAndDelegate().run(safe, 500 ether, 500 ether, seedPools);
         _rollEpoch();
 
-        new Redelegate().run("redelegate-all", safe, 0, targetPools);
+        new Redelegate().run(1, safe, 0, targetPools);
 
         IStakingProxy.StoredBalance memory bal31 =
             IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
@@ -79,9 +79,9 @@ contract SafeExecutionTest is ZrxFixture {
         vm.deal(safe, 10 ether);
 
         bytes32[] memory empty = new bytes32[](0);
-        new WrapGovernance().run("liquid", safe, delegatee, 50 ether, empty);
+        new WrapGovernance().run(2, safe, delegatee, empty);
 
-        assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(safe), 50 ether, "wZRX balance");
+        assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(safe), 1000 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(safe), delegatee, "delegatee");
     }
 
@@ -95,7 +95,7 @@ contract SafeExecutionTest is ZrxFixture {
         _rollEpoch();
 
         bytes32[] memory empty = new bytes32[](0);
-        new WrapGovernance().run("full", safe, delegatee, 500 ether, empty);
+        new WrapGovernance().run(1, safe, delegatee, empty);
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(safe), 500 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(safe), delegatee, "delegatee");
@@ -118,7 +118,7 @@ contract SafeExecutionTest is ZrxFixture {
         // Exclude pool 31 from the wrap; pool 48 is the source.
         bytes32[] memory exclude = new bytes32[](1);
         exclude[0] = Constants.TARGET_POOL_31;
-        new WrapGovernance().run("exclude-pools", safe, delegatee, 250 ether, exclude);
+        new WrapGovernance().run(3, safe, delegatee, exclude);
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(safe), 250 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(safe), delegatee, "delegatee");

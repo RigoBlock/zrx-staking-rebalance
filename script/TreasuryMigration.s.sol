@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {Constants} from "../src/constants/Constants.sol";
+import {LibStaking} from "../src/libraries/LibStaking.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IPolygonMigration} from "../src/interfaces/IPolygonMigration.sol";
 import {IZrxTreasury} from "../src/interfaces/IZrxTreasury.sol";
@@ -14,18 +15,33 @@ contract TreasuryMigration is Script {
         Execute
     }
 
+    /// @notice Run using the default proposer and default operated pools.
+    function run(uint8 mode) external {
+        _run(_validateMode(mode), Constants.DEFAULT_STAKER, LibStaking.defaultTargetPools(), 0);
+    }
+
+    /// @notice Execute a specific proposal using the default proposer and pools.
+    function run(uint8 mode, uint256 proposalId) external {
+        _run(_validateMode(mode), Constants.DEFAULT_STAKER, LibStaking.defaultTargetPools(), proposalId);
+    }
+
+    /// @notice Run with explicit proposer and pools (used by tests).
     function run(
-        string calldata modeName,
+        uint8 mode,
         address proposer,
         bytes32[] calldata operatedPoolIds,
         uint256 proposalId
     ) external {
-        Mode mode = parseMode(modeName);
+        _run(_validateMode(mode), proposer, operatedPoolIds, proposalId);
+    }
 
+    function _run(uint8 mode, address proposer, bytes32[] memory operatedPoolIds, uint256 proposalId)
+        private
+    {
         IZrxTreasury.ProposedAction[] memory actions = buildActions();
         require(actions.length > 0, "no actions");
 
-        if (mode == Mode.Propose) {
+        if (mode == uint8(Mode.Propose)) {
             IZrxTreasury treasury = IZrxTreasury(Constants.OLD_ZRX_TREASURY);
             uint256 threshold = treasury.proposalThreshold();
             uint256 votingPower = treasury.getVotingPower(proposer, operatedPoolIds);
@@ -51,10 +67,9 @@ contract TreasuryMigration is Script {
         }
     }
 
-    function parseMode(string calldata modeName) private pure returns (Mode) {
-        if (keccak256(bytes(modeName)) == keccak256(bytes("propose"))) return Mode.Propose;
-        if (keccak256(bytes(modeName)) == keccak256(bytes("execute"))) return Mode.Execute;
-        revert("unknown mode");
+    function _validateMode(uint8 mode) private pure returns (uint8) {
+        require(mode <= uint8(Mode.Execute), "invalid mode");
+        return mode;
     }
 
     function buildActions() private view returns (IZrxTreasury.ProposedAction[] memory actions) {

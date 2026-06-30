@@ -9,18 +9,35 @@ import {Constants} from "../src/constants/Constants.sol";
 
 /**
  * @title StakeAndDelegate
- * @notice Stakes ZRX through the 0x staking proxy and delegates across a set of pools.
+ * @notice Stakes ZRX through the 0x staking proxy and delegates equally across a set of pools.
  */
 contract StakeAndDelegate is Script {
-    uint256 internal constant MAX_POOL_ID = 100;
+    /// @notice Stake and delegate using the default staker, default pools, and the full available balance.
+    function run() external {
+        _run(
+            Constants.DEFAULT_STAKER,
+            Constants.USE_FULL_BALANCE,
+            Constants.USE_FULL_BALANCE,
+            LibStaking.defaultTargetPools()
+        );
+    }
 
+    /// @notice Stake and delegate using the default staker and default pools.
+    function run(uint256 stakeAmount, uint256 delegateAmount) external {
+        _run(Constants.DEFAULT_STAKER, stakeAmount, delegateAmount, LibStaking.defaultTargetPools());
+    }
+
+    /// @notice Stake and delegate with explicit staker and pools (used by tests).
     function run(address staker, uint256 stakeAmount, uint256 delegateAmount, bytes32[] calldata pools)
         external
     {
-        require(staker != address(0), "Invalid staker");
-        require(pools.length > 0, "Empty pool list");
+        _run(staker, stakeAmount, delegateAmount, pools);
+    }
 
-        uint256 actualDelegate = delegateAmount == 0 && stakeAmount > 0 ? stakeAmount : delegateAmount;
+    function _run(address staker, uint256 stakeAmount, uint256 delegateAmount, bytes32[] memory pools)
+        private
+    {
+        require(pools.length > 0, "Empty pool list");
 
         IStakingProxy staking = IStakingProxy(Constants.STAKING_PROXY);
         IERC20 zrx = IERC20(Constants.ZRX_TOKEN);
@@ -29,13 +46,24 @@ contract StakeAndDelegate is Script {
         uint256[] memory beforePerPool = _snapshotNextEpochBalances(staker, pools);
         uint256 scheduledBefore = _sum(beforePerPool);
         uint256 zrxBefore = zrx.balanceOf(staker);
+        uint256 undelegatedBefore = staking.getOwnerStakeByStatus(staker, LibStaking.UNDELEGATED).currentEpochBalance;
+
+        uint256 actualStake = stakeAmount == Constants.USE_FULL_BALANCE ? zrxBefore : stakeAmount;
+        uint256 actualDelegate;
+        if (delegateAmount == Constants.USE_FULL_BALANCE) {
+            actualDelegate = actualStake + undelegatedBefore;
+        } else if (delegateAmount == 0 && actualStake > 0) {
+            actualDelegate = actualStake;
+        } else {
+            actualDelegate = delegateAmount;
+        }
 
         vm.startBroadcast(staker);
 
-        if (stakeAmount > 0) {
-            require(zrx.balanceOf(staker) >= stakeAmount, "Insufficient ZRX balance");
-            zrx.approve(Constants.ERC20_PROXY, stakeAmount);
-            staking.stake(stakeAmount);
+        if (actualStake > 0) {
+            require(zrxBefore >= actualStake, "Insufficient ZRX balance");
+            zrx.approve(Constants.ERC20_PROXY, actualStake);
+            staking.stake(actualStake);
         }
 
         if (actualDelegate > 0) {
@@ -51,14 +79,14 @@ contract StakeAndDelegate is Script {
 
         vm.stopBroadcast();
 
-        _verify(staker, stakeAmount, actualDelegate, pools, beforePerPool, scheduledBefore, zrxBefore);
+        _verify(staker, actualStake, actualDelegate, pools, beforePerPool, scheduledBefore, zrxBefore);
     }
 
     function _verify(
         address staker,
         uint256 stakeAmount,
         uint256 delegateAmount,
-        bytes32[] calldata pools,
+        bytes32[] memory pools,
         uint256[] memory beforePerPool,
         uint256 scheduledBefore,
         uint256 zrxBefore
@@ -86,7 +114,7 @@ contract StakeAndDelegate is Script {
         }
     }
 
-    function _snapshotNextEpochBalances(address staker, bytes32[] calldata pools)
+    function _snapshotNextEpochBalances(address staker, bytes32[] memory pools)
         private
         view
         returns (uint256[] memory balances)

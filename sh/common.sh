@@ -15,32 +15,11 @@ fi
 
 : "${RPC_URL:?RPC_URL must be set as an environment variable or in .env}"
 
-DEFAULT_POOLS="[0x0000000000000000000000000000000000000000000000000000000000000031,0x0000000000000000000000000000000000000000000000000000000000000048,0x0000000000000000000000000000000000000000000000000000000000000034]"
+# Sentinel value passed to StakeAndDelegate to mean "use the full available balance/amount".
+# The canonical value is Constants.USE_FULL_BALANCE in src/constants/Constants.sol.
+MAX_UINT=115792089237316195423570985008687907853269984665640564039457584007913129639935
 
 # Convert a human-readable amount (e.g. 1.5) to wei.
 to_wei() {
   cast --to-wei "$1" ether
-}
-
-# Build a bytes32 array literal from positional arguments.
-build_pool_array() {
-  if [ "$#" -eq 0 ]; then
-    echo "$DEFAULT_POOLS"
-    return
-  fi
-  local arr="["
-  local first=1
-  for p in "$@"; do
-    if [ "$first" -eq 1 ]; then
-      first=0
-    else
-      arr="$arr,"
-    fi
-    # Normalize to 66 characters (0x + 64 hex).
-    local clean="${p#0x}"
-    clean="$(printf '%064s' "$clean" | tr ' ' '0')"
-    arr="$arr 0x$clean"
-  done
-  arr="$arr ]"
-  echo "$arr"
 }

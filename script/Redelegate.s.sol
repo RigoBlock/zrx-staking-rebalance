@@ -19,11 +19,26 @@ contract Redelegate is Script {
         RedelegateAmount
     }
 
-    function run(string calldata modeName, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
+    /// @notice Run using the default staker and default target pools.
+    function run(uint8 mode) external {
+        _run(Mode(_validateMode(mode)), Constants.DEFAULT_STAKER, 0, LibStaking.defaultTargetPools());
+    }
+
+    /// @notice Run using the default staker and default target pools with a target amount.
+    function run(uint8 mode, uint256 targetAmount) external {
+        _run(Mode(_validateMode(mode)), Constants.DEFAULT_STAKER, targetAmount, LibStaking.defaultTargetPools());
+    }
+
+    /// @notice Run with explicit staker and pools (used by tests).
+    function run(uint8 mode, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
         external
     {
-        Mode mode = parseMode(modeName);
+        _run(Mode(_validateMode(mode)), staker, targetAmount, targetPoolIds);
+    }
 
+    function _run(Mode mode, address staker, uint256 targetAmount, bytes32[] memory targetPoolIds)
+        private
+    {
         bytes[] memory calls = _buildCalls(mode, staker, targetAmount, targetPoolIds);
 
         if (calls.length == 0) {
@@ -40,7 +55,12 @@ contract Redelegate is Script {
         _verify(mode, staker, targetAmount, targetPoolIds, delegations, totalDelegated);
     }
 
-    function _buildCalls(Mode mode, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
+    function _validateMode(uint8 mode) private pure returns (uint8) {
+        require(mode <= uint8(Mode.RedelegateAmount), "invalid mode");
+        return mode;
+    }
+
+    function _buildCalls(Mode mode, address staker, uint256 targetAmount, bytes32[] memory targetPoolIds)
         private
         view
         returns (bytes[] memory calls)
@@ -57,7 +77,8 @@ contract Redelegate is Script {
             calls = _buildRebalanceCalls(delegations, targetPoolIds, totalDelegated);
         } else {
             require(targetPoolIds.length > 0, "no target pools");
-            calls = _buildRedelegateAmountCalls(delegations, targetPoolIds, targetAmount);
+            uint256 effectiveTarget = targetAmount == 0 ? totalDelegated : targetAmount;
+            calls = _buildRedelegateAmountCalls(delegations, targetPoolIds, effectiveTarget);
         }
     }
 
@@ -65,7 +86,7 @@ contract Redelegate is Script {
         Mode mode,
         address staker,
         uint256 targetAmount,
-        bytes32[] calldata targetPoolIds,
+        bytes32[] memory targetPoolIds,
         LibStaking.Delegation[] memory beforeDelegations,
         uint256 totalDelegatedBefore
     ) private view {
@@ -102,7 +123,7 @@ contract Redelegate is Script {
             require(scheduledTotal == expectedTotal, "Redelegate: redelegate-all total mismatch");
         } else {
             // RedelegateAmount
-            uint256 expectedTotal = targetAmount;
+            uint256 expectedTotal = targetAmount == 0 ? totalDelegatedBefore : targetAmount;
             uint256 scheduledTotal = 0;
             for (uint256 i = 0; i < targetPoolIds.length; i++) {
                 scheduledTotal += IStakingProxy(Constants.STAKING_PROXY)
@@ -110,13 +131,6 @@ contract Redelegate is Script {
             }
             require(scheduledTotal == expectedTotal, "Redelegate: redelegate-amount total mismatch");
         }
-    }
-
-    function parseMode(string calldata modeName) private pure returns (Mode) {
-        if (keccak256(bytes(modeName)) == keccak256(bytes("undelegate-all"))) return Mode.UndelegateAll;
-        if (keccak256(bytes(modeName)) == keccak256(bytes("redelegate-all"))) return Mode.RedelegateAll;
-        if (keccak256(bytes(modeName)) == keccak256(bytes("redelegate-amount"))) return Mode.RedelegateAmount;
-        revert("unknown mode");
     }
 
     function _buildUndelegateCalls(LibStaking.Delegation[] memory delegations)
@@ -132,7 +146,7 @@ contract Redelegate is Script {
 
     function _buildRebalanceCalls(
         LibStaking.Delegation[] memory delegations,
-        bytes32[] calldata targetPoolIds,
+        bytes32[] memory targetPoolIds,
         uint256 targetTotal
     ) private pure returns (bytes[] memory calls) {
         calls = new bytes[](delegations.length + targetPoolIds.length);
@@ -147,7 +161,7 @@ contract Redelegate is Script {
 
     function _buildRedelegateAmountCalls(
         LibStaking.Delegation[] memory delegations,
-        bytes32[] calldata targetPoolIds,
+        bytes32[] memory targetPoolIds,
         uint256 targetAmount
     ) private pure returns (bytes[] memory calls) {
         uint256 currentTarget = 0;
@@ -222,7 +236,7 @@ contract Redelegate is Script {
         }
     }
 
-    function _isTarget(bytes32 poolId, bytes32[] calldata targetPoolIds) private pure returns (bool) {
+    function _isTarget(bytes32 poolId, bytes32[] memory targetPoolIds) private pure returns (bool) {
         for (uint256 i = 0; i < targetPoolIds.length; i++) {
             if (poolId == targetPoolIds[i]) return true;
         }

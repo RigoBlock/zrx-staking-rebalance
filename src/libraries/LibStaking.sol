@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IStakingProxy} from "../interfaces/IStakingProxy.sol";
+import {Constants} from "../constants/Constants.sol";
 
 library LibStaking {
     uint8 internal constant UNDELEGATED = 0;
@@ -109,6 +110,13 @@ library LibStaking {
             distributed += parts[i];
         }
         parts[weights.length - 1] = total - distributed;
+    }
+
+    function defaultTargetPools() internal pure returns (bytes32[] memory pools) {
+        pools = new bytes32[](3);
+        pools[0] = Constants.TARGET_POOL_31;
+        pools[1] = Constants.TARGET_POOL_48;
+        pools[2] = Constants.TARGET_POOL_34;
     }
 
     function splitEqually(uint256 amount, uint256 count)

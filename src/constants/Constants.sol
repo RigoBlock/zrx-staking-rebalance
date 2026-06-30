@@ -33,6 +33,13 @@ library Constants {
     bytes32 public constant TARGET_POOL_48 = 0x0000000000000000000000000000000000000000000000000000000000000048;
     bytes32 public constant TARGET_POOL_34 = 0x0000000000000000000000000000000000000000000000000000000000000034;
 
+    // Default actors used by scripts when the caller passes address(0).
+    address public constant DEFAULT_STAKER = LEGACY_STAKE_SAFE_OWNER;
+    address public constant DEFAULT_DELEGATEE = OX_LABS_DEPLOYMENT_SAFE;
+
+    // Sentinel passed to scripts to mean "use the full available balance/amount".
+    uint256 public constant USE_FULL_BALANCE = type(uint256).max;
+
     // Mainnet block pinned for reproducible fork tests. Update when on-chain state required by tests changes.
     uint256 public constant FORK_BLOCK_NUMBER = 25_400_000;
 }

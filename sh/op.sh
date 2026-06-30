@@ -3,29 +3,6 @@ set -euo pipefail
 
 source "$(dirname "$0")/common.sh"
 
-# Validate an Ethereum address using cast.
-validate_address() {
-  local addr="$1"
-  if ! cast --to-checksum "$addr" >/dev/null 2>&1; then
-    echo "Invalid address: $addr"
-    exit 1
-  fi
-}
-
-# Prompt for a staker/proposer address and validate it.
-ask_address() {
-  local prompt="$1"
-  local var="$2"
-  while true; do
-    read -r -p "$prompt" value
-    if validate_address "$value" 2>/dev/null; then
-      eval "$var=\"$value\""
-      return
-    fi
-    echo "Invalid address, please try again."
-  done
-}
-
 # Prompt for a human-readable amount and convert it to wei.
 ask_amount() {
   local var="$1"
@@ -38,20 +15,6 @@ ask_amount() {
     fi
     echo "Invalid amount, please enter a number."
   done
-}
-
-# Prompt for target pools; empty input uses the defaults.
-ask_pools() {
-  local var="$1"
-  local input
-  read -r -p "Target pools (bytes32, comma/space separated; empty for defaults): " input
-  if [ -z "$input" ]; then
-    eval "$var=\"\""
-  else
-    # Normalize commas to spaces so build_pool_array receives separate args.
-    local cleaned="${input//,/ }"
-    eval "$var=\"$cleaned\""
-  fi
 }
 
 # Prompt for the signer and export the relevant environment variables.
@@ -155,32 +118,20 @@ select op in \
 
   case "$op" in
     stake-delegate)
-      ask_address "Staker address: " staker
       ask_amount amount
-      ask_pools pools
       ask_signer
       ask_mode
       confirm
-      if [ -z "$pools" ]; then
-        run_op stake-and-delegate.sh "$staker" "$amount"
-      else
-        run_op stake-and-delegate.sh "$staker" "$amount" $pools
-      fi
+      run_op stake-and-delegate.sh "$amount"
       break
       ;;
 
     delegate-equal)
-      ask_address "Staker address: " staker
       ask_amount amount
-      ask_pools pools
       ask_signer
       ask_mode
       confirm
-      if [ -z "$pools" ]; then
-        run_op delegate-equal.sh "$staker" "$amount"
-      else
-        run_op delegate-equal.sh "$staker" "$amount" $pools
-      fi
+      run_op delegate-equal.sh "$amount"
       break
       ;;
 
@@ -189,20 +140,14 @@ select op in \
       select mode in "undelegate-all" "redelegate-all" "redelegate-amount"; do
         [ -n "$mode" ] && break
       done
-      ask_address "Staker address: " staker
       local target_amount=0
       if [ "$mode" = "redelegate-amount" ]; then
         ask_amount target_amount
       fi
-      ask_pools pools
       ask_signer
       ask_mode
       confirm
-      if [ -z "$pools" ]; then
-        run_op redelegate.sh "$mode" "$staker" "$target_amount"
-      else
-        run_op redelegate.sh "$mode" "$staker" "$target_amount" $pools
-      fi
+      run_op redelegate.sh "$mode" "$target_amount"
       break
       ;;
 
@@ -211,25 +156,10 @@ select op in \
       select mode in "liquid" "full" "exclude-pools" "unstake"; do
         [ -n "$mode" ] && break
       done
-      ask_address "Staker address: " staker
-      ask_address "Delegatee address: " delegatee
-      ask_amount amount
-      local exclude=""
-      if [ "$mode" = "exclude-pools" ]; then
-        ask_pools exclude
-      fi
       ask_signer
       ask_mode
       confirm
-      if [ "$mode" = "exclude-pools" ]; then
-        if [ -z "$exclude" ]; then
-          run_op wrap-governance.sh "$mode" "$staker" "$delegatee" "$amount"
-        else
-          run_op wrap-governance.sh "$mode" "$staker" "$delegatee" "$amount" $exclude
-        fi
-      else
-        run_op wrap-governance.sh "$mode" "$staker" "$delegatee" "$amount"
-      fi
+      run_op wrap-governance.sh "$mode"
       break
       ;;
 
@@ -238,21 +168,15 @@ select op in \
       select mode in "propose" "execute"; do
         [ -n "$mode" ] && break
       done
-      ask_address "Proposer address: " proposer
       ask_signer
       ask_mode
       confirm
       if [ "$mode" = "execute" ]; then
         local proposal_id
         read -r -p "Proposal ID: " proposal_id
-        run_op treasury.sh "$mode" "$proposer" "$proposal_id"
+        run_op treasury.sh "$mode" "$proposal_id"
       else
-        ask_pools pools
-        if [ -z "$pools" ]; then
-          run_op treasury.sh "$mode" "$proposer"
-        else
-          run_op treasury.sh "$mode" "$proposer" $pools
-        fi
+        run_op treasury.sh "$mode"
       fi
       break
       ;;

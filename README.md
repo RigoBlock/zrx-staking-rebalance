@@ -109,60 +109,57 @@ Each operation has two package scripts:
 Foundry scripts simulate by default and only broadcast when `--broadcast` is
 passed, so `op:sim:*` is the same script without that flag.
 
-Examples:
+The Solidity scripts are self-contained: the staker, delegatee, and target pools
+are read from `src/constants/Constants.sol` (`DEFAULT_STAKER`,
+`DEFAULT_DELEGATEE`, `LibStaking.defaultTargetPools()`). They do not accept
+addresses or pool ids as input parameters, so the shell wrappers and package
+scripts only forward amounts or mode-specific IDs when needed.
+
+Zero-argument examples:
+
+```bash
+yarn op:sim:stake-delegate      # stake and delegate the full ZRX balance
+yarn op:sim:delegate-equal      # delegate the full undelegated balance
+yarn op:sim:undelegate          # undelegate all active stake
+yarn op:sim:redelegate          # undelegate all and redelegate to target pools
+yarn op:sim:rebalance           # rebalance target pools to current total
+yarn op:sim:wrap:liquid         # wrap all liquid ZRX
+yarn op:sim:wrap:full           # wrap all active delegated stake
+yarn op:sim:wrap:exclude-pools  # wrap all stake outside the target pools
+yarn op:sim:unstake             # unstake all undelegated ZRX
+yarn op:sim:treasury:propose    # propose treasury migration
+```
+
+Optional positional arguments:
 
 ```bash
 # Stake 1,000,000 ZRX and delegate equally across the 3 target pools
-yarn op:stake-delegate 0x... 1000000
-
-# Simulate first
-yarn op:sim:stake-delegate 0x... 1000000
+yarn op:stake-delegate 1000000
 
 # Delegate 1,000,000 ZRX of existing undelegated stake equally across target pools
-yarn op:delegate-equal 0x... 1000000
-
-# Undelegate all active stake
-yarn op:redelegate undelegate-all 0x...
-
-# Undelegate all active stake and redelegate equally to target pools
-yarn op:redelegate redelegate-all 0x...
+yarn op:delegate-equal 1000000
 
 # Rebalance so the target pools total exactly 2,000,000 ZRX
-yarn op:redelegate redelegate-amount 0x... 2000000
+yarn op:rebalance 2000000
 
-# Wrap already-liquid ZRX into wZRX governance and delegate
-yarn op:wrap liquid 0x... 0x... 1000000
-
-# Full legacy-stake migration: undelegate all, advance epoch, unstake, wrap, delegate
-yarn op:wrap full 0x... 0x... 1000000
-
-# Undelegate from non-target pools, advance epoch, unstake, wrap, delegate
-yarn op:wrap exclude-pools 0x... 0x... 1000000 \
-  0x0000000000000000000000000000000000000000000000000000000000000031
-
-
-# Propose migrating old ZRX treasury assets to the new governance treasury
-yarn op:treasury propose 0x...
-
-# Execute the proposal after it has passed
-yarn op:treasury execute 0x... <proposalId>
+# Execute the treasury proposal after it has passed
+yarn op:treasury:execute <proposalId>
 ```
 
-Default target pools are `0x31`, `0x48`, `0x34`. Override by appending pool ids:
-
-```bash
-yarn op:redelegate redelegate-all 0x... 0x31 0x48 0x32
-```
+Default target pools are `0x31`, `0x48`, `0x34`. To change them, edit
+`src/constants/Constants.sol` and `src/libraries/LibStaking.defaultTargetPools()`.
 
 ### Direct shell usage
 
 ```bash
 # Broadcast (requires a signer)
-PRIVATE_KEY=0x... ./sh/stake-and-delegate.sh --broadcast 0x... 1000000
-LEDGER=1 ./sh/redelegate.sh --broadcast redelegate-all 0x...
+PRIVATE_KEY=0x... ./sh/stake-and-delegate.sh --broadcast 1000000
+LEDGER=1 ./sh/redelegate.sh --broadcast redelegate-all
+LEDGER=1 ./sh/wrap-governance.sh --broadcast full
 
 # Simulate (no signer required beyond the --from address)
-./sh/redelegate.sh redelegate-all 0x...
+./sh/redelegate.sh redelegate-all
+./sh/wrap-governance.sh liquid
 ```
 
 ## Hardware wallets
@@ -170,8 +167,8 @@ LEDGER=1 ./sh/redelegate.sh --broadcast redelegate-all 0x...
 Foundry supports hardware wallets natively:
 
 ```bash
-LEDGER=1 yarn op:redelegate redelegate-all 0x...
-TREZOR=1 yarn op:wrap liquid 0x... 0x... 1000
+LEDGER=1 yarn op:redelegate
+TREZOR=1 yarn op:wrap:liquid
 ```
 
 Always simulate first with `yarn op:sim:*` (no `--broadcast`).

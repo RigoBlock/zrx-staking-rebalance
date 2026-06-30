@@ -21,20 +21,13 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-STAKER="$1"
-AMOUNT="$2"
-shift 2
-
-POOLS="$(build_pool_array "$@")"
-WEI="$(to_wei "$AMOUNT")"
-
-# Default: stake the amount and delegate the same amount.
-STAKE_AMOUNT="$WEI"
-DELEGATE_AMOUNT="$WEI"
-
-# If no pools are supplied, behave like stake-new (do not delegate).
-if [ "$#" -eq 0 ]; then
-  DELEGATE_AMOUNT="0"
+# Default: stake and delegate the full available balance.
+AMOUNT="$MAX_UINT"
+if [ "$#" -gt 0 ] && printf '%s\n' "$1" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+  AMOUNT="$(to_wei "$1")"
+  shift
+elif [ -n "${AMOUNT:-}" ]; then
+  AMOUNT="$(to_wei "$AMOUNT")"
 fi
 
 FLAGS=()
@@ -43,5 +36,5 @@ if [ "$BROADCAST" = true ]; then
 fi
 
 exec "$(dirname "$0")/run-forge.sh" "${FLAGS[@]}" "$REPO_ROOT/script/StakeAndDelegate.s.sol" \
-  --sig "run(address,uint256,uint256,bytes32[])" \
-  "$STAKER" "$STAKE_AMOUNT" "$DELEGATE_AMOUNT" "$POOLS"
+  --sig "run(uint256,uint256)" \
+  "$AMOUNT" "$AMOUNT"
