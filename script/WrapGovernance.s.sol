@@ -24,44 +24,31 @@ contract WrapGovernance is Script {
     }
 
     /// @notice Run using the default staker, default delegatee, and default exclude pools.
-    function run(uint8 mode) external {
-        _run(
-            _validateMode(mode),
-            Constants.DEFAULT_STAKER,
-            Constants.DEFAULT_DELEGATEE,
-            LibStaking.defaultTargetPools()
-        );
+    function run(Mode mode) external {
+        _run(mode, Constants.DEFAULT_STAKER, Constants.DEFAULT_DELEGATEE, LibStaking.defaultTargetPools());
     }
 
     /// @notice Run with explicit staker, delegatee, and exclude pools (used by tests).
-    function run(
-        uint8 mode,
-        address staker,
-        address delegatee,
-        bytes32[] calldata excludePoolIds
-    ) external {
-        _run(_validateMode(mode), staker, delegatee, excludePoolIds);
+    function run(Mode mode, address staker, address delegatee, bytes32[] calldata excludePoolIds)
+        external
+    {
+        _run(mode, staker, delegatee, excludePoolIds);
     }
 
-    function _run(uint8 mode, address staker, address delegatee, bytes32[] memory excludePoolIds)
+    function _run(Mode mode, address staker, address delegatee, bytes32[] memory excludePoolIds)
         private
     {
-        if (mode == uint8(Mode.Unstake)) {
+        if (mode == Mode.Unstake) {
             _unstake(staker);
-        } else if (mode == uint8(Mode.Liquid)) {
+        } else if (mode == Mode.Liquid) {
             _wrapLiquid(staker, delegatee);
-        } else if (mode == uint8(Mode.Full)) {
+        } else if (mode == Mode.Full) {
             _wrapFull(staker, delegatee);
         } else {
             _wrapExcludePools(staker, delegatee, excludePoolIds);
         }
 
         console2.log("WrapGovernance done");
-    }
-
-    function _validateMode(uint8 mode) private pure returns (uint8) {
-        require(mode <= uint8(Mode.ExcludePools), "invalid mode");
-        return mode;
     }
 
     function _unstake(address staker) private {

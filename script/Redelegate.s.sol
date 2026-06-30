@@ -20,20 +20,20 @@ contract Redelegate is Script {
     }
 
     /// @notice Run using the default staker and default target pools.
-    function run(uint8 mode) external {
-        _run(Mode(_validateMode(mode)), Constants.DEFAULT_STAKER, 0, LibStaking.defaultTargetPools());
+    function run(Mode mode) external {
+        _run(mode, Constants.DEFAULT_STAKER, 0, LibStaking.defaultTargetPools());
     }
 
     /// @notice Run using the default staker and default target pools with a target amount.
-    function run(uint8 mode, uint256 targetAmount) external {
-        _run(Mode(_validateMode(mode)), Constants.DEFAULT_STAKER, targetAmount, LibStaking.defaultTargetPools());
+    function run(Mode mode, uint256 targetAmount) external {
+        _run(mode, Constants.DEFAULT_STAKER, targetAmount, LibStaking.defaultTargetPools());
     }
 
     /// @notice Run with explicit staker and pools (used by tests).
-    function run(uint8 mode, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
+    function run(Mode mode, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
         external
     {
-        _run(Mode(_validateMode(mode)), staker, targetAmount, targetPoolIds);
+        _run(mode, staker, targetAmount, targetPoolIds);
     }
 
     function _run(Mode mode, address staker, uint256 targetAmount, bytes32[] memory targetPoolIds)
@@ -53,11 +53,6 @@ contract Redelegate is Script {
         vm.stopBroadcast();
 
         _verify(mode, staker, targetAmount, targetPoolIds, delegations, totalDelegated);
-    }
-
-    function _validateMode(uint8 mode) private pure returns (uint8) {
-        require(mode <= uint8(Mode.RedelegateAmount), "invalid mode");
-        return mode;
     }
 
     function _buildCalls(Mode mode, address staker, uint256 targetAmount, bytes32[] memory targetPoolIds)

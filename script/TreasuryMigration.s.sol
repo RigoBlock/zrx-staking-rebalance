@@ -16,32 +16,32 @@ contract TreasuryMigration is Script {
     }
 
     /// @notice Run using the default proposer and default operated pools.
-    function run(uint8 mode) external {
-        _run(_validateMode(mode), Constants.DEFAULT_STAKER, LibStaking.defaultTargetPools(), 0);
+    function run(Mode mode) external {
+        _run(mode, Constants.DEFAULT_STAKER, LibStaking.defaultTargetPools(), 0);
     }
 
     /// @notice Execute a specific proposal using the default proposer and pools.
-    function run(uint8 mode, uint256 proposalId) external {
-        _run(_validateMode(mode), Constants.DEFAULT_STAKER, LibStaking.defaultTargetPools(), proposalId);
+    function run(Mode mode, uint256 proposalId) external {
+        _run(mode, Constants.DEFAULT_STAKER, LibStaking.defaultTargetPools(), proposalId);
     }
 
     /// @notice Run with explicit proposer and pools (used by tests).
     function run(
-        uint8 mode,
+        Mode mode,
         address proposer,
         bytes32[] calldata operatedPoolIds,
         uint256 proposalId
     ) external {
-        _run(_validateMode(mode), proposer, operatedPoolIds, proposalId);
+        _run(mode, proposer, operatedPoolIds, proposalId);
     }
 
-    function _run(uint8 mode, address proposer, bytes32[] memory operatedPoolIds, uint256 proposalId)
+    function _run(Mode mode, address proposer, bytes32[] memory operatedPoolIds, uint256 proposalId)
         private
     {
         IZrxTreasury.ProposedAction[] memory actions = buildActions();
         require(actions.length > 0, "no actions");
 
-        if (mode == uint8(Mode.Propose)) {
+        if (mode == Mode.Propose) {
             IZrxTreasury treasury = IZrxTreasury(Constants.OLD_ZRX_TREASURY);
             uint256 threshold = treasury.proposalThreshold();
             uint256 votingPower = treasury.getVotingPower(proposer, operatedPoolIds);
@@ -65,11 +65,6 @@ contract TreasuryMigration is Script {
             vm.stopBroadcast();
             console2.log("Treasury proposal executed");
         }
-    }
-
-    function _validateMode(uint8 mode) private pure returns (uint8) {
-        require(mode <= uint8(Mode.Execute), "invalid mode");
-        return mode;
     }
 
     function buildActions() private view returns (IZrxTreasury.ProposedAction[] memory actions) {
