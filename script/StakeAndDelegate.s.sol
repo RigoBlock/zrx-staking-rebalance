@@ -12,31 +12,15 @@ import {Constants} from "../src/constants/Constants.sol";
  * @notice Stakes ZRX through the 0x staking proxy and delegates equally across a set of pools.
  */
 contract StakeAndDelegate is Script {
-    /// @notice Stake and delegate using the default staker, default pools, and the full available balance.
-    function run() external {
-        _run(
-            Constants.DEFAULT_STAKER,
-            Constants.USE_FULL_BALANCE,
-            Constants.USE_FULL_BALANCE,
-            LibStaking.defaultTargetPools()
-        );
-    }
-
-    /// @notice Stake and delegate using the default staker and default pools.
-    function run(uint256 stakeAmount, uint256 delegateAmount) external {
-        _run(Constants.DEFAULT_STAKER, stakeAmount, delegateAmount, LibStaking.defaultTargetPools());
-    }
-
-    /// @notice Stake and delegate with explicit staker and pools (used by tests).
-    function run(address staker, uint256 stakeAmount, uint256 delegateAmount, bytes32[] calldata pools)
-        external
-    {
-        _run(staker, stakeAmount, delegateAmount, pools);
-    }
-
-    function _run(address staker, uint256 stakeAmount, uint256 delegateAmount, bytes32[] memory pools)
-        private
-    {
+    /// @notice Stake and/or delegate for the given staker.
+    /// @param staker Staker address; pass address(0) to use the default staker.
+    /// @param stakeAmount ZRX to stake. Pass USE_FULL_BALANCE to stake the entire ZRX balance.
+    /// @param delegateAmount ZRX to delegate. Pass USE_FULL_BALANCE to delegate the full staked + undelegated balance.
+    ///                       Pass 0 with stakeAmount > 0 to delegate exactly the staked amount.
+    /// @param poolsCsv Comma-separated target pool ids. Empty string uses defaultTargetPools().
+    function run(address staker, uint256 stakeAmount, uint256 delegateAmount, string memory poolsCsv) external {
+        if (staker == address(0)) staker = Constants.DEFAULT_STAKER;
+        bytes32[] memory pools = LibStaking.parsePools(poolsCsv);
         require(pools.length > 0, "Empty pool list");
 
         IStakingProxy staking = IStakingProxy(Constants.STAKING_PROXY);

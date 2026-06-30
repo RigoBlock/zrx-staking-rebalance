@@ -28,4 +28,12 @@ contract ZrxFixture is Test {
         vm.warp(start + duration + 1);
         stake.endEpoch();
     }
+
+    /// @dev Build a comma-separated string of pool ids for script CSV inputs.
+    function _poolsToCsv(bytes32[] memory pools) internal pure returns (string memory csv) {
+        for (uint256 i = 0; i < pools.length; i++) {
+            if (i > 0) csv = string.concat(csv, ",");
+            csv = string.concat(csv, vm.toString(pools[i]));
+        }
+    }
 }

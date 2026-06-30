@@ -3,15 +3,14 @@ pragma solidity ^0.8.0;
 
 import {IStakingProxy} from "../interfaces/IStakingProxy.sol";
 import {Constants} from "../constants/Constants.sol";
+import {Delegation} from "../types/Types.sol";
+import {Vm} from "../../lib/forge-std/src/Vm.sol";
 
 library LibStaking {
     uint8 internal constant UNDELEGATED = 0;
     uint8 internal constant DELEGATED = 1;
 
-    struct Delegation {
-        bytes32 poolId;
-        uint256 amount;
-    }
+    Vm private constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     function getActiveDelegations(address stakingProxy, address staker, uint256 maxPoolId)
         internal
@@ -39,8 +38,7 @@ library LibStaking {
         uint256 count = 0;
         for (uint256 i = 1; i <= maxPoolId; i++) {
             bytes32 poolId = bytes32(i);
-            IStakingProxy.StoredBalance memory bal =
-                stake.getStakeDelegatedToPoolByOwner(staker, poolId);
+            IStakingProxy.StoredBalance memory bal = stake.getStakeDelegatedToPoolByOwner(staker, poolId);
             uint256 amount = useCurrent ? bal.currentEpochBalance : bal.nextEpochBalance;
             if (amount > 0) {
                 count++;
@@ -52,8 +50,7 @@ library LibStaking {
         uint256 idx = 0;
         for (uint256 i = 1; i <= maxPoolId; i++) {
             bytes32 poolId = bytes32(i);
-            IStakingProxy.StoredBalance memory bal =
-                stake.getStakeDelegatedToPoolByOwner(staker, poolId);
+            IStakingProxy.StoredBalance memory bal = stake.getStakeDelegatedToPoolByOwner(staker, poolId);
             uint256 amount = useCurrent ? bal.currentEpochBalance : bal.nextEpochBalance;
             if (amount > 0) {
                 delegations[idx] = Delegation({poolId: poolId, amount: amount});
@@ -71,24 +68,15 @@ library LibStaking {
         bool toDelegated = toPool != bytes32(0);
         IStakingProxy.StakeInfo memory from =
             IStakingProxy.StakeInfo(fromDelegated ? DELEGATED : UNDELEGATED, fromPool);
-        IStakingProxy.StakeInfo memory to =
-            IStakingProxy.StakeInfo(toDelegated ? DELEGATED : UNDELEGATED, toPool);
+        IStakingProxy.StakeInfo memory to = IStakingProxy.StakeInfo(toDelegated ? DELEGATED : UNDELEGATED, toPool);
         return abi.encodeWithSelector(IStakingProxy.moveStake.selector, from, to, amount);
     }
 
-    function encodeDelegate(bytes32 poolId, uint256 amount)
-        internal
-        pure
-        returns (bytes memory)
-    {
+    function encodeDelegate(bytes32 poolId, uint256 amount) internal pure returns (bytes memory) {
         return encodeMoveStake(bytes32(0), poolId, amount);
     }
 
-    function encodeUndelegate(bytes32 poolId, uint256 amount)
-        internal
-        pure
-        returns (bytes memory)
-    {
+    function encodeUndelegate(bytes32 poolId, uint256 amount) internal pure returns (bytes memory) {
         return encodeMoveStake(poolId, bytes32(0), amount);
     }
 
@@ -119,11 +107,17 @@ library LibStaking {
         pools[2] = Constants.TARGET_POOL_34;
     }
 
-    function splitEqually(uint256 amount, uint256 count)
-        internal
-        pure
-        returns (uint256[] memory parts)
-    {
+    /// @notice Parse a comma-separated list of pool ids. Empty string returns the default target pools.
+    function parsePools(string memory poolsCsv) internal pure returns (bytes32[] memory pools) {
+        if (bytes(poolsCsv).length == 0) return defaultTargetPools();
+        string[] memory parts = VM.split(poolsCsv, ",");
+        pools = new bytes32[](parts.length);
+        for (uint256 i = 0; i < parts.length; i++) {
+            pools[i] = VM.parseBytes32(VM.trim(parts[i]));
+        }
+    }
+
+    function splitEqually(uint256 amount, uint256 count) internal pure returns (uint256[] memory parts) {
         require(count > 0, "zero count");
         parts = new uint256[](count);
         uint256 base = amount / count;

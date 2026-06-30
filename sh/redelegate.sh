@@ -52,11 +52,49 @@ if [ "$MODE" = "redelegate-amount" ]; then
   fi
 fi
 
+POOLS_CSV="${POOLS:-}"
+if [ "$#" -gt 0 ]; then
+  POOLS_CSV="$1"
+  shift
+fi
+STAKER="${STAKER:-0x0000000000000000000000000000000000000000}"
+
+echo "=============================================="
+echo "Redelegate operation"
+echo "  mode:           $MODE"
+echo "  mode uint:      $MODE_UINT"
+echo "  staker:         $STAKER"
+echo "  target amount:  $TARGET_AMOUNT"
+echo "  pools csv:      ${POOLS_CSV:-<default>}"
+echo "  broadcast:      $BROADCAST"
+echo "=============================================="
+
 FLAGS=()
 if [ "$BROADCAST" = true ]; then
   FLAGS+=(--broadcast)
 fi
 
-exec "$(dirname "$0")/run-forge.sh" "${FLAGS[@]}" "$REPO_ROOT/script/Redelegate.s.sol" \
-  --sig "run(uint8,uint256)" \
-  "$MODE_UINT" "$TARGET_AMOUNT"
+"$(dirname "$0")/run-forge.sh" "${FLAGS[@]}" "$REPO_ROOT/script/Redelegate.s.sol" \
+  --sig "run(uint8,address,uint256,string)" \
+  "$MODE_UINT" "$STAKER" "$TARGET_AMOUNT" "$POOLS_CSV"
+
+# Print calldata for each transaction in the broadcast output.
+RUN_DIR="dry-run"
+[ "$BROADCAST" = true ] && RUN_DIR=""
+BROADCAST_FILE="$REPO_ROOT/broadcast/Redelegate.s.sol/1/${RUN_DIR:+${RUN_DIR}/}run-latest.json"
+
+if [ -f "$BROADCAST_FILE" ] && command -v jq >/dev/null 2>&1; then
+  echo ""
+  echo "Transactions (for Tenderly/simulator verification):"
+  echo "  broadcast file: $BROADCAST_FILE"
+  tx_count=$(jq '.transactions | length' "$BROADCAST_FILE")
+  for i in $(seq 0 $((tx_count - 1))); do
+    to=$(jq -r ".transactions[$i].transaction.to" "$BROADCAST_FILE")
+    value=$(jq -r ".transactions[$i].transaction.value" "$BROADCAST_FILE")
+    data=$(jq -r ".transactions[$i].transaction.input" "$BROADCAST_FILE")
+    echo "  [$i] to: $to"
+    echo "       value: $value"
+    echo "       data:  $data"
+  done
+  echo "=============================================="
+fi

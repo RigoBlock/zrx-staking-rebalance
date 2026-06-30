@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {ZrxFixture} from "./Fixtures.sol";
 import {Constants} from "../src/constants/Constants.sol";
 import {LibStaking} from "../src/libraries/LibStaking.sol";
+import {RedelegateMode, WrapGovernanceMode} from "../src/types/Types.sol";
 import {StakeAndDelegate} from "../script/StakeAndDelegate.s.sol";
 import {Redelegate} from "../script/Redelegate.s.sol";
 import {WrapGovernance} from "../script/WrapGovernance.s.sol";
@@ -33,7 +34,7 @@ contract OperationsTest is ZrxFixture {
         pools[0] = Constants.TARGET_POOL_31;
         pools[1] = Constants.TARGET_POOL_48;
 
-        new StakeAndDelegate().run(staker, 100 ether, 100 ether, pools);
+        new StakeAndDelegate().run(staker, 100 ether, 100 ether, _poolsToCsv(pools));
 
         IStakingProxy.StoredBalance memory bal31 =
             IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_31);
@@ -59,7 +60,7 @@ contract OperationsTest is ZrxFixture {
         pools[1] = Constants.TARGET_POOL_48;
 
         // stakeAmount=0, delegateAmount=USE_FULL_BALANCE delegates all undelegated stake.
-        new StakeAndDelegate().run(staker, 0, type(uint256).max, pools);
+        new StakeAndDelegate().run(staker, 0, type(uint256).max, _poolsToCsv(pools));
 
         IStakingProxy.StoredBalance memory bal31 =
             IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_31);
@@ -77,11 +78,11 @@ contract OperationsTest is ZrxFixture {
         // Seed a single pool with 500 ZRX and roll the epoch so it is active.
         bytes32[] memory seedPools = new bytes32[](1);
         seedPools[0] = Constants.TARGET_POOL_31;
-        new StakeAndDelegate().run(staker, 500 ether, 500 ether, seedPools);
+        new StakeAndDelegate().run(staker, 500 ether, 500 ether, _poolsToCsv(seedPools));
         _rollEpoch();
 
         // Redelegate all active stake across the three target pools.
-        new Redelegate().run(Redelegate.Mode.RedelegateAll, staker, 0, targetPools);
+        new Redelegate().run(RedelegateMode.RedelegateAll, staker, 0, _poolsToCsv(targetPools));
 
         IStakingProxy.StoredBalance memory bal31 =
             IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_31);
@@ -100,8 +101,7 @@ contract OperationsTest is ZrxFixture {
         _giveZrx(staker, 1000 ether);
         vm.deal(staker, 10 ether);
 
-        bytes32[] memory empty = new bytes32[](0);
-        new WrapGovernance().run(WrapGovernance.Mode.Liquid, staker, delegatee, empty);
+        new WrapGovernance().run(WrapGovernanceMode.Liquid, staker, delegatee, "");
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(staker), 1000 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(staker), delegatee, "delegatee");
@@ -113,11 +113,10 @@ contract OperationsTest is ZrxFixture {
 
         bytes32[] memory seedPools = new bytes32[](1);
         seedPools[0] = Constants.TARGET_POOL_31;
-        new StakeAndDelegate().run(staker, 500 ether, 500 ether, seedPools);
+        new StakeAndDelegate().run(staker, 500 ether, 500 ether, _poolsToCsv(seedPools));
         _rollEpoch();
 
-        bytes32[] memory empty = new bytes32[](0);
-        new WrapGovernance().run(WrapGovernance.Mode.Full, staker, delegatee, empty);
+        new WrapGovernance().run(WrapGovernanceMode.Full, staker, delegatee, "");
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(staker), 500 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(staker), delegatee, "delegatee");
@@ -134,13 +133,13 @@ contract OperationsTest is ZrxFixture {
         bytes32[] memory seedPools = new bytes32[](2);
         seedPools[0] = Constants.TARGET_POOL_31;
         seedPools[1] = Constants.TARGET_POOL_48;
-        new StakeAndDelegate().run(staker, 500 ether, 500 ether, seedPools);
+        new StakeAndDelegate().run(staker, 500 ether, 500 ether, _poolsToCsv(seedPools));
         _rollEpoch();
 
         // Exclude pool 31 from the wrap; pool 48 is the source.
         bytes32[] memory exclude = new bytes32[](1);
         exclude[0] = Constants.TARGET_POOL_31;
-        new WrapGovernance().run(WrapGovernance.Mode.ExcludePools, staker, delegatee, exclude);
+        new WrapGovernance().run(WrapGovernanceMode.ExcludePools, staker, delegatee, _poolsToCsv(exclude));
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(staker), 250 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(staker), delegatee, "delegatee");

@@ -8,40 +8,23 @@ import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IPolygonMigration} from "../src/interfaces/IPolygonMigration.sol";
 import {IZrxTreasury} from "../src/interfaces/IZrxTreasury.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
+import {TreasuryMode} from "../src/types/Types.sol";
 
 contract TreasuryMigration is Script {
-    enum Mode {
-        Propose,
-        Execute
-    }
+    /// @notice Propose or execute the treasury migration.
+    /// @param mode Operation mode (propose, execute).
+    /// @param proposer Proposer address; pass address(0) to use the default staker.
+    /// @param operatedPoolsCsv Comma-separated pool ids used to prove voting power.
+    ///                         Empty string uses defaultTargetPools().
+    /// @param proposalId Proposal id; only used for execute mode.
+    function run(TreasuryMode mode, address proposer, string memory operatedPoolsCsv, uint256 proposalId) external {
+        if (proposer == address(0)) proposer = Constants.DEFAULT_STAKER;
+        bytes32[] memory operatedPoolIds = LibStaking.parsePools(operatedPoolsCsv);
 
-    /// @notice Run using the default proposer and default operated pools.
-    function run(Mode mode) external {
-        _run(mode, Constants.DEFAULT_STAKER, LibStaking.defaultTargetPools(), 0);
-    }
-
-    /// @notice Execute a specific proposal using the default proposer and pools.
-    function run(Mode mode, uint256 proposalId) external {
-        _run(mode, Constants.DEFAULT_STAKER, LibStaking.defaultTargetPools(), proposalId);
-    }
-
-    /// @notice Run with explicit proposer and pools (used by tests).
-    function run(
-        Mode mode,
-        address proposer,
-        bytes32[] calldata operatedPoolIds,
-        uint256 proposalId
-    ) external {
-        _run(mode, proposer, operatedPoolIds, proposalId);
-    }
-
-    function _run(Mode mode, address proposer, bytes32[] memory operatedPoolIds, uint256 proposalId)
-        private
-    {
         IZrxTreasury.ProposedAction[] memory actions = buildActions();
         require(actions.length > 0, "no actions");
 
-        if (mode == Mode.Propose) {
+        if (mode == TreasuryMode.Propose) {
             IZrxTreasury treasury = IZrxTreasury(Constants.OLD_ZRX_TREASURY);
             uint256 threshold = treasury.proposalThreshold();
             uint256 votingPower = treasury.getVotingPower(proposer, operatedPoolIds);
