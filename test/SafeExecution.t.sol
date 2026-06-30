@@ -2,13 +2,13 @@
 pragma solidity ^0.8.0;
 
 import {Test} from "forge-std/Test.sol";
-import {Constants} from "../script/Constants.sol";
-import {LibScript} from "../script/LibScript.sol";
+import {Constants} from "../src/constants/Constants.sol";
+import {LibScript} from "../src/libraries/LibScript.sol";
 import {StakeAndDelegate} from "../script/StakeAndDelegate.s.sol";
 import {Redelegate} from "../script/Redelegate.s.sol";
 import {WrapGovernance} from "../script/WrapGovernance.s.sol";
 import {WrapGovernanceMultiDelegate} from "../script/WrapGovernanceMultiDelegate.s.sol";
-import {LibSafeChild} from "../script/LibSafeChild.sol";
+import {LibSafeChild} from "../src/libraries/LibSafeChild.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IwZRX} from "../src/interfaces/IwZRX.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
@@ -38,7 +38,7 @@ contract SafeExecutionTest is Test {
 
         uint256 zrxBefore = IERC20(Constants.ZRX_TOKEN).balanceOf(safe);
         LibScript.PlanStep[] memory steps =
-            new StakeAndDelegate().plan(safe, 100 ether, 100 ether, pools);
+            new StakeAndDelegate().generatePlan(safe, 100 ether, 100 ether, pools);
 
         _executeSteps(steps, safe);
 
@@ -62,7 +62,7 @@ contract SafeExecutionTest is Test {
         _rollEpoch();
 
         LibScript.PlanStep[] memory steps =
-            new Redelegate().plan("redelegate-all", safe, 0, targetPools);
+            new Redelegate().generatePlan("redelegate-all", safe, 0, targetPools);
         _executeSteps(steps, safe);
 
         IStakingProxy.StoredBalance memory bal31 =
@@ -83,7 +83,7 @@ contract SafeExecutionTest is Test {
 
         bytes32[] memory empty = new bytes32[](0);
         LibScript.PlanStep[] memory steps =
-            new WrapGovernance().plan("liquid", safe, delegatee, 50 ether, empty);
+            new WrapGovernance().generatePlan("liquid", safe, delegatee, 50 ether, empty);
         _executeSteps(steps, safe);
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(safe), 50 ether, "wZRX balance");
@@ -100,7 +100,7 @@ contract SafeExecutionTest is Test {
 
         bytes32[] memory empty = new bytes32[](0);
         LibScript.PlanStep[] memory steps =
-            new WrapGovernance().plan("full", safe, delegatee, 500 ether, empty);
+            new WrapGovernance().generatePlan("full", safe, delegatee, 500 ether, empty);
 
         // Step 0 undelegates the active stake. The epoch must then advance before the unstake can occur.
         require(steps.length > 1, "empty plan");
@@ -132,7 +132,7 @@ contract SafeExecutionTest is Test {
         bytes32[] memory exclude = new bytes32[](1);
         exclude[0] = Constants.TARGET_POOL_31;
         LibScript.PlanStep[] memory steps =
-            new WrapGovernance().plan("exclude-pools", safe, delegatee, 250 ether, exclude);
+            new WrapGovernance().generatePlan("exclude-pools", safe, delegatee, 250 ether, exclude);
 
         require(steps.length > 1, "empty plan");
         _executeStep(steps[0], safe);
@@ -167,7 +167,7 @@ contract SafeExecutionTest is Test {
         amounts[2] = 100 ether;
 
         LibScript.PlanStep[] memory steps =
-            new WrapGovernanceMultiDelegate().plan(safe, delegatees, amounts);
+            new WrapGovernanceMultiDelegate().generatePlan(safe, delegatees, amounts);
         _executeSteps(steps, safe);
 
         assertEq(IERC20(Constants.ZRX_TOKEN).balanceOf(safe), 700 ether, "ZRX balance");
@@ -197,7 +197,7 @@ contract SafeExecutionTest is Test {
     }
 
     function _safeRunStakeAndDelegate(address staker, bytes32[] memory pools, uint256 amount) internal {
-        LibScript.PlanStep[] memory steps = new StakeAndDelegate().plan(staker, amount, amount, pools);
+        LibScript.PlanStep[] memory steps = new StakeAndDelegate().generatePlan(staker, amount, amount, pools);
         _executeSteps(steps, staker);
     }
 

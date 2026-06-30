@@ -2,9 +2,9 @@
 pragma solidity ^0.8.0;
 
 import {Script} from "forge-std/Script.sol";
-import {Constants} from "./Constants.sol";
-import {LibScript} from "./LibScript.sol";
-import {LibSafeChild} from "./LibSafeChild.sol";
+import {Constants} from "../src/constants/Constants.sol";
+import {LibScript} from "../src/libraries/LibScript.sol";
+import {LibSafeChild} from "../src/libraries/LibSafeChild.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IwZRX} from "../src/interfaces/IwZRX.sol";
 
@@ -16,7 +16,7 @@ import {IwZRX} from "../src/interfaces/IwZRX.sol";
  *         factory and are owned solely by the master Safe.
  */
 contract WrapGovernanceMultiDelegate is Script {
-    function plan(address staker, address[] calldata delegatees, uint256[] calldata amounts)
+    function generatePlan(address staker, address[] calldata delegatees, uint256[] calldata amounts)
         external
         view
         returns (LibScript.PlanStep[] memory steps)
@@ -81,6 +81,8 @@ contract WrapGovernanceMultiDelegate is Script {
             data: abi.encodeWithSelector(IERC20.approve.selector, Constants.WZRX_TOKEN, 0),
             description: "Reset ZRX approval"
         });
+
+        LibScript.emitPlanJson(steps);
     }
 
     function run(address staker, address[] calldata delegatees, uint256[] calldata amounts) external {

@@ -2,13 +2,13 @@
 pragma solidity ^0.8.0;
 
 import {Test} from "forge-std/Test.sol";
-import {Constants} from "../script/Constants.sol";
-import {LibStaking} from "../script/LibStaking.sol";
+import {Constants} from "../src/constants/Constants.sol";
+import {LibStaking} from "../src/libraries/LibStaking.sol";
 import {StakeAndDelegate} from "../script/StakeAndDelegate.s.sol";
 import {Redelegate} from "../script/Redelegate.s.sol";
 import {WrapGovernance} from "../script/WrapGovernance.s.sol";
 import {WrapGovernanceMultiDelegate} from "../script/WrapGovernanceMultiDelegate.s.sol";
-import {LibSafeChild} from "../script/LibSafeChild.sol";
+import {LibSafeChild} from "../src/libraries/LibSafeChild.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IwZRX} from "../src/interfaces/IwZRX.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";

@@ -2,9 +2,9 @@
 pragma solidity ^0.8.0;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {Constants} from "./Constants.sol";
-import {LibStaking} from "./LibStaking.sol";
-import {LibScript} from "./LibScript.sol";
+import {Constants} from "../src/constants/Constants.sol";
+import {LibStaking} from "../src/libraries/LibStaking.sol";
+import {LibScript} from "../src/libraries/LibScript.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IwZRX} from "../src/interfaces/IwZRX.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
@@ -20,7 +20,7 @@ contract WrapGovernance is Script {
         ExcludePools
     }
 
-    function plan(
+    function generatePlan(
         string calldata modeName,
         address staker,
         address delegatee,
@@ -28,25 +28,27 @@ contract WrapGovernance is Script {
         bytes32[] calldata excludePoolIds
     ) external view returns (LibScript.PlanStep[] memory) {
         Mode mode = parseMode(modeName);
+        LibScript.PlanStep[] memory steps;
         if (mode == Mode.Unstake) {
-            return _unstakeSteps(amount);
-        }
-        if (mode == Mode.Liquid) {
-            return _wrapSteps(staker, delegatee, amount);
-        }
-
-        // Full and ExcludePools both start by undelegating stake.
-        (LibStaking.Delegation[] memory delegations,) =
-            LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
-
-        bytes[] memory undelegateCalls;
-        if (mode == Mode.Full) {
-            undelegateCalls = _buildUndelegateCalls(delegations);
+            steps = _unstakeSteps(amount);
+        } else if (mode == Mode.Liquid) {
+            steps = _wrapSteps(staker, delegatee, amount);
         } else {
-            undelegateCalls = _buildExcludeUndelegateCalls(delegations, excludePoolIds, amount);
-        }
+            // Full and ExcludePools both start by undelegating stake.
+            (LibStaking.Delegation[] memory delegations,) =
+                LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
 
-        return _wrapWithUndelegateSteps(undelegateCalls, staker, delegatee, amount);
+            bytes[] memory undelegateCalls;
+            if (mode == Mode.Full) {
+                undelegateCalls = _buildUndelegateCalls(delegations);
+            } else {
+                undelegateCalls = _buildExcludeUndelegateCalls(delegations, excludePoolIds, amount);
+            }
+
+            steps = _wrapWithUndelegateSteps(undelegateCalls, staker, delegatee, amount);
+        }
+        LibScript.emitPlanJson(steps);
+        return steps;
     }
 
     function run(

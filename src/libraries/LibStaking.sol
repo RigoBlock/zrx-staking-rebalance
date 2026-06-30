@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
+import {IStakingProxy} from "../interfaces/IStakingProxy.sol";
 
 library LibStaking {
     uint8 internal constant UNDELEGATED = 0;

@@ -94,20 +94,22 @@ ask_signer() {
   done
 }
 
-# Ask whether to simulate or execute.
+# Track whether the user chose to execute (broadcast) or simulate.
+EXECUTE_MODE=false
+
 ask_mode() {
   local mode
   read -r -p "Run mode — (s)imulate or (e)xecute? " mode
   if [ "$mode" = "e" ] || [ "$mode" = "E" ]; then
-    unset DRY_RUN 2>/dev/null || true
+    EXECUTE_MODE=true
   else
-    export DRY_RUN=1
+    EXECUTE_MODE=false
   fi
 }
 
 # Confirm before executing.
 confirm() {
-  if [ -z "${DRY_RUN:-}" ]; then
+  if [ "$EXECUTE_MODE" = true ]; then
     local ok
     read -r -p "This will broadcast to the network. Continue? (y/N) " ok
     if [ "$ok" != "y" ] && [ "$ok" != "Y" ]; then
@@ -132,12 +134,14 @@ run_op() {
   elif [ -n "${MNEMONIC_INDEX:-}" ]; then
     echo "  signer: mnemonic (index $MNEMONIC_INDEX)"
   fi
-  if [ -n "${DRY_RUN:-}" ]; then
-    echo "  mode: simulate (DRY_RUN=1)"
-  else
+  local flags=()
+  if [ "$EXECUTE_MODE" = true ]; then
     echo "  mode: execute (broadcast)"
+    flags+=(--broadcast)
+  else
+    echo "  mode: simulate"
   fi
-  "$(dirname "$0")/$script" "$@"
+  "$(dirname "$0")/$script" "${flags[@]}" "$@"
 }
 
 echo "Select operation:"

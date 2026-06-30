@@ -4,9 +4,9 @@ pragma solidity ^0.8.0;
 import {Script} from "forge-std/Script.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
-import {LibStaking} from "./LibStaking.sol";
-import {LibScript} from "./LibScript.sol";
-import {Constants} from "./Constants.sol";
+import {LibStaking} from "../src/libraries/LibStaking.sol";
+import {LibScript} from "../src/libraries/LibScript.sol";
+import {Constants} from "../src/constants/Constants.sol";
 
 /**
  * @title StakeAndDelegate
@@ -17,7 +17,7 @@ contract StakeAndDelegate is Script {
 
     uint256 internal constant MAX_POOL_ID = 100;
 
-    function plan(address staker, uint256 stakeAmount, uint256 delegateAmount, bytes32[] calldata pools)
+    function generatePlan(address staker, uint256 stakeAmount, uint256 delegateAmount, bytes32[] calldata pools)
         external
         pure
         returns (LibScript.PlanStep[] memory)
@@ -25,7 +25,9 @@ contract StakeAndDelegate is Script {
         require(staker != address(0), "Invalid staker");
         require(pools.length > 0, "Empty pool list");
         uint256 actualDelegate = delegateAmount == 0 && stakeAmount > 0 ? stakeAmount : delegateAmount;
-        return _buildSteps(stakeAmount, actualDelegate, pools);
+        LibScript.PlanStep[] memory steps = _buildSteps(stakeAmount, actualDelegate, pools);
+        LibScript.emitPlanJson(steps);
+        return steps;
     }
 
     function run(address staker, uint256 stakeAmount, uint256 delegateAmount, bytes32[] calldata pools)
@@ -35,11 +37,6 @@ contract StakeAndDelegate is Script {
         require(pools.length > 0, "Empty pool list");
 
         uint256 actualDelegate = delegateAmount == 0 && stakeAmount > 0 ? stakeAmount : delegateAmount;
-
-        if (LibScript.envBool("WRITE_PLAN", false)) {
-            LibScript.emitPlanJson(_buildSteps(stakeAmount, actualDelegate, pools));
-            return;
-        }
 
         IStakingProxy staking = IStakingProxy(Constants.STAKING_PROXY);
         IERC20 zrx = IERC20(Constants.ZRX_TOKEN);

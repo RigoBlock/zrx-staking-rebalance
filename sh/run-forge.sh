@@ -3,14 +3,32 @@ set -euo pipefail
 
 source "$(dirname "$0")/common.sh"
 
+BROADCAST=false
+PLAN=false
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --broadcast)
+      BROADCAST=true
+      shift
+      ;;
+    --plan)
+      PLAN=true
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 SCRIPT="$1"
 CONTRACT_NAME="$(basename "$SCRIPT" .s.sol)"
 shift
-
-BROADCAST_FLAG="--broadcast"
-if [ -n "${DRY_RUN:-}" ] || [ -n "${WRITE_PLAN:-}" ]; then
-  BROADCAST_FLAG=""
-fi
 
 SIGNER_FLAGS=()
 if [ -n "${PRIVATE_KEY:-}" ]; then
@@ -29,9 +47,14 @@ if [ -n "${HD_PATHS:-}" ]; then
   SIGNER_FLAGS+=(--hd-paths "$HD_PATHS")
 fi
 
+BROADCAST_FLAG=""
+if [ "$BROADCAST" = true ]; then
+  BROADCAST_FLAG="--broadcast"
+fi
+
 mkdir -p "$REPO_ROOT/out"
 
-if [ -n "${WRITE_PLAN:-}" ]; then
+if [ "$PLAN" = true ]; then
   LOG_FILE="$(mktemp)"
   # shellcheck disable=SC2086
   forge script "${SCRIPT}:${CONTRACT_NAME}" \

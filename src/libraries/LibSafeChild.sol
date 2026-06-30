@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Constants} from "./Constants.sol";
-import {IwZRX} from "../src/interfaces/IwZRX.sol";
+import {Constants} from "../constants/Constants.sol";
+import {IwZRX} from "../interfaces/IwZRX.sol";
 
 interface ISafeProxyFactory {
     function proxyCreationCode() external view returns (bytes memory);

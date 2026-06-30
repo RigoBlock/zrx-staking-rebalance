@@ -11,19 +11,20 @@ or the shell wrappers directly.
 
 ```
 script/                   # Foundry Solidity scripts
-  Constants.sol           # Mainnet addresses and target pool ids
-  LibStaking.sol          # Pure staking calldata helpers
-  LibScript.sol           # Shared script utilities (env, plan JSON)
   StakeAndDelegate.s.sol
   Redelegate.s.sol
   WrapGovernance.s.sol
+  WrapGovernanceMultiDelegate.s.sol
   TreasuryMigration.s.sol
 sh/                       # Bash wrappers, Safe helpers, constants, and the interactive runner
   common_safe.sh          # Safe hash/sign/post helpers
   constants.sh            # Safe-related constants
   safe-propose.sh         # Propose a plan to a Safe
   safe-confirm.sh         # Confirm a Safe transaction
-src/interfaces/           # Minimal Solidity contract interfaces
+src/
+  interfaces/             # Minimal Solidity contract interfaces
+  constants/Constants.sol # Mainnet addresses and target pool ids
+  libraries/              # Shared helpers (LibStaking, LibScript, LibSafeChild)
 test/
   Operations.t.sol        # Foundry fork tests (direct script execution)
   SafeExecution.t.sol     # Foundry fork tests (execute proposed Safe calldata)
@@ -63,7 +64,7 @@ cp .env.example .env
 
 ## Key addresses
 
-All on-chain addresses live in `script/Constants.sol`.
+All on-chain addresses live in `src/constants/Constants.sol`.
 
 - `OLD_ZRX_TREASURY` and `NEW_ZRX_TREASURY` are the 0x governance treasury
   **contracts** (timelock/Governor style), not Safe wallets.
@@ -97,9 +98,9 @@ never logs the private key.
 
 Most operations have three package scripts:
 
-- `op:<name>` — execute (broadcast)
-- `op:sim:<name>` — simulate (`DRY_RUN=1`)
-- `op:plan:<name>` — write a JSON plan to `out/plan.json` (`WRITE_PLAN=1`)
+- `op:<name>` — execute (broadcast, adds Foundry's `--broadcast` flag)
+- `op:sim:<name>` — simulate (no `--broadcast`, Foundry runs locally)
+- `op:plan:<name>` — write a JSON plan to `out/plan.json` (`--plan`)
 
 Plan mode is available for the staking/redelegation operations. Wrap and
 treasury operations support simulate and execute, but not plan output, because
@@ -156,9 +157,15 @@ yarn op:redelegate redelegate-all 0x... 0x31 0x48 0x32
 ### Direct shell usage
 
 ```bash
-PRIVATE_KEY=0x... ./sh/stake-and-delegate.sh 0x... 1000000
-LEDGER=1 ./sh/redelegate.sh redelegate-all 0x...
-WRITE_PLAN=1 ./sh/wrap-governance.sh liquid 0x... 0x... 1000
+# Broadcast (requires a signer)
+PRIVATE_KEY=0x... ./sh/stake-and-delegate.sh --broadcast 0x... 1000000
+LEDGER=1 ./sh/redelegate.sh --broadcast redelegate-all 0x...
+
+# Simulate (no signer required beyond the --from address)
+./sh/redelegate.sh redelegate-all 0x...
+
+# Generate a JSON plan
+./sh/stake-and-delegate.sh --plan 0x... 1000000
 ```
 
 ### Plans and Safe transactions
@@ -166,7 +173,7 @@ WRITE_PLAN=1 ./sh/wrap-governance.sh liquid 0x... 0x... 1000
 Generate a JSON plan without broadcasting:
 
 ```bash
-WRITE_PLAN=1 yarn op:stake-delegate 0x... 1000000
+yarn op:plan:stake-delegate 0x... 1000000
 cat out/plan.json
 ```
 
@@ -214,7 +221,7 @@ Proposals are submitted to the 0x Labs deployment Safe by default:
 ```
 
 This address is taken from 0x Settler's mainnet `chain_config.json` and is the
-`OX_LABS_DEPLOYMENT_SAFE` constant in `script/Constants.sol`. To target a
+`OX_LABS_DEPLOYMENT_SAFE` constant in `src/constants/Constants.sol`. To target a
 different Safe, set the `SAFE_ADDRESS` environment variable or pass the address
 as the first argument to `safe-propose.sh` / `safe-confirm.sh`:
 
@@ -238,7 +245,7 @@ LEDGER=1 yarn op:redelegate redelegate-all 0x...
 TREZOR=1 yarn op:wrap liquid 0x... 0x... 1000
 ```
 
-Always simulate first with `yarn op:sim:*` or `DRY_RUN=1`.
+Always simulate first with `yarn op:sim:*` (no `--broadcast`).
 
 ## Tests
 

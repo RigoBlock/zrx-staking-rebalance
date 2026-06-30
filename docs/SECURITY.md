@@ -42,8 +42,8 @@ Every operation should be simulated before broadcast:
 yarn op:sim:stake-delegate 0x... 1000
 ```
 
-The `op:sim:*` scripts set `DRY_RUN=1`, so Foundry runs the script without
-broadcasting. The interactive `yarn op` runner also offers a "Simulate" mode.
+The `op:sim:*` scripts omit `--broadcast`, so Foundry runs the script locally
+without broadcasting. The interactive `yarn op` runner also offers a "Simulate" mode.
 
 ## Safe Transaction Service
 
@@ -61,8 +61,8 @@ No Safe SDK or Node runtime is involved; the flow is pure Foundry/shell.
 For hardware wallets, sign the `safeTxHash` offline with `cast wallet sign --no-hash`
 and pass `--signature <sig> --sender <owner>` to the scripts.
 
-The plan JSON written by `WRITE_PLAN=1` is a local convenience artifact and never
-contains private keys.
+The plan JSON written by `op:plan:*` (or `--plan` when calling a shell wrapper
+directly) is a local convenience artifact and never contains private keys.
 
 ## Audit status
 

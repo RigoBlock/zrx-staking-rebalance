@@ -2,9 +2,9 @@
 pragma solidity ^0.8.0;
 
 import {Script} from "forge-std/Script.sol";
-import {Constants} from "./Constants.sol";
-import {LibStaking} from "./LibStaking.sol";
-import {LibScript} from "./LibScript.sol";
+import {Constants} from "../src/constants/Constants.sol";
+import {LibStaking} from "../src/libraries/LibStaking.sol";
+import {LibScript} from "../src/libraries/LibScript.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
 
 contract Redelegate is Script {
@@ -16,23 +16,16 @@ contract Redelegate is Script {
         RedelegateAmount
     }
 
-    function plan(string calldata modeName, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
-        external
-        view
-        returns (LibScript.PlanStep[] memory)
-    {
+    function generatePlan(
+        string calldata modeName,
+        address staker,
+        uint256 targetAmount,
+        bytes32[] calldata targetPoolIds
+    ) external view returns (LibScript.PlanStep[] memory) {
         Mode mode = parseMode(modeName);
         bytes[] memory calls = _buildCalls(mode, staker, targetAmount, targetPoolIds);
-        if (calls.length == 0) {
-            return new LibScript.PlanStep[](0);
-        }
-        LibScript.PlanStep[] memory steps = new LibScript.PlanStep[](1);
-        steps[0] = LibScript.PlanStep({
-            to: Constants.STAKING_PROXY,
-            value: 0,
-            data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, calls),
-            description: "Redelegate"
-        });
+        LibScript.PlanStep[] memory steps = _buildPlanStep(calls);
+        LibScript.emitPlanJson(steps);
         return steps;
     }
 
@@ -47,18 +40,6 @@ contract Redelegate is Script {
             return;
         }
 
-        if (LibScript.envBool("WRITE_PLAN", false)) {
-            LibScript.PlanStep[] memory steps = new LibScript.PlanStep[](1);
-            steps[0] = LibScript.PlanStep({
-                to: Constants.STAKING_PROXY,
-                value: 0,
-                data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, calls),
-                description: "Redelegate"
-            });
-            LibScript.emitPlanJson(steps);
-            return;
-        }
-
         (LibStaking.Delegation[] memory delegations, uint256 totalDelegated) =
             LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
 
@@ -67,6 +48,19 @@ contract Redelegate is Script {
         vm.stopBroadcast();
 
         _verify(mode, staker, targetAmount, targetPoolIds, delegations, totalDelegated);
+    }
+
+    function _buildPlanStep(bytes[] memory calls) internal pure returns (LibScript.PlanStep[] memory steps) {
+        if (calls.length == 0) {
+            return new LibScript.PlanStep[](0);
+        }
+        steps = new LibScript.PlanStep[](1);
+        steps[0] = LibScript.PlanStep({
+            to: Constants.STAKING_PROXY,
+            value: 0,
+            data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, calls),
+            description: "Redelegate"
+        });
     }
 
     function _buildCalls(Mode mode, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)

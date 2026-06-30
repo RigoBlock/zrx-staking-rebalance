@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {Constants} from "./Constants.sol";
+import {Constants} from "../src/constants/Constants.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IPolygonMigration} from "../src/interfaces/IPolygonMigration.sol";
 import {IZrxTreasury} from "../src/interfaces/IZrxTreasury.sol";

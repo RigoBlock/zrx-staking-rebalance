@@ -38,11 +38,4 @@ library LibScript {
         json = string.concat(json, "]");
     }
 
-    function envBool(string memory key, bool defaultValue) internal view returns (bool) {
-        try VM.envBool(key) returns (bool v) {
-            return v;
-        } catch {
-            return defaultValue;
-        }
-    }
 }
