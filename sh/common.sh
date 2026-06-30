@@ -3,9 +3,6 @@ set -euo pipefail
 
 export REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# shellcheck source=/dev/null
-source "$(dirname "${BASH_SOURCE[0]}")/constants.sh"
-
 # Remember any user-provided RPC_URL so it takes precedence over .env.
 USER_RPC_URL="${RPC_URL:-}"
 

@@ -10,18 +10,13 @@
     "op": "./sh/op.sh",
     "op:stake-delegate": "./sh/stake-and-delegate.sh --broadcast",
     "op:sim:stake-delegate": "./sh/stake-and-delegate.sh",
-    "op:plan:stake-delegate": "./sh/stake-and-delegate.sh --plan",
     "op:delegate-equal": "./sh/delegate-equal.sh --broadcast",
     "op:sim:delegate-equal": "./sh/delegate-equal.sh",
-    "op:plan:delegate-equal": "./sh/delegate-equal.sh --plan",
     "op:redelegate": "./sh/redelegate.sh --broadcast",
     "op:sim:redelegate": "./sh/redelegate.sh",
-    "op:plan:redelegate": "./sh/redelegate.sh --plan",
     "op:wrap": "./sh/wrap-governance.sh --broadcast",
     "op:sim:wrap": "./sh/wrap-governance.sh",
     "op:treasury": "./sh/treasury.sh --broadcast",
-    "op:sim:treasury": "./sh/treasury.sh",
-    "safe:propose": "./sh/safe-propose.sh",
-    "safe:confirm": "./sh/safe-confirm.sh"
+    "op:sim:treasury": "./sh/treasury.sh"
   }
 }

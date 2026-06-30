@@ -45,25 +45,6 @@ yarn op:sim:stake-delegate 0x... 1000
 The `op:sim:*` scripts omit `--broadcast`, so Foundry runs the script locally
 without broadcasting. The interactive `yarn op` runner also offers a "Simulate" mode.
 
-## Safe Transaction Service
-
-Safe transactions are proposed with `sh/safe-propose.sh` and confirmed with
-`sh/safe-confirm.sh`. They follow the same pattern 0x Settler uses:
-
-- The Safe transaction hash is computed by calling the Safe contract with
-  `cast call getTransactionHash(...)`.
-- The hash is signed with `cast wallet sign --no-hash`.
-- The signed payload is POSTed to the Safe Transaction Service URL defined in
-  `sh/constants.sh` (mainnet only).
-
-No Safe SDK or Node runtime is involved; the flow is pure Foundry/shell.
-
-For hardware wallets, sign the `safeTxHash` offline with `cast wallet sign --no-hash`
-and pass `--signature <sig> --sender <owner>` to the scripts.
-
-The plan JSON written by `op:plan:*` (or `--plan` when calling a shell wrapper
-directly) is a local convenience artifact and never contains private keys.
-
 ## Audit status
 
 This is not a third-party audit. Use at your own risk, preferably with a

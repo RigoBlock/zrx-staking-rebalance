@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 import {Script} from "forge-std/Script.sol";
 import {Constants} from "../src/constants/Constants.sol";
-import {LibScript} from "../src/libraries/LibScript.sol";
 import {LibSafeChild} from "../src/libraries/LibSafeChild.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IwZRX} from "../src/interfaces/IwZRX.sol";
@@ -16,75 +15,6 @@ import {IwZRX} from "../src/interfaces/IwZRX.sol";
  *         factory and are owned solely by the master Safe.
  */
 contract WrapGovernanceMultiDelegate is Script {
-    function generatePlan(address staker, address[] calldata delegatees, uint256[] calldata amounts)
-        external
-        view
-        returns (LibScript.PlanStep[] memory steps)
-    {
-        _validate(delegatees, amounts);
-        uint256 total = _total(amounts);
-
-        uint256 stepCount = 2; // initial approve + final reset
-        for (uint256 i = 0; i < delegatees.length; i++) {
-            address childSafe = LibSafeChild.predictChildSafeAddress(staker, delegatees[i]);
-            stepCount += 3; // deposit + approveHash + execTransaction
-            if (childSafe.code.length == 0) stepCount++;
-        }
-
-        steps = new LibScript.PlanStep[](stepCount);
-        uint256 idx;
-
-        steps[idx++] = LibScript.PlanStep({
-            to: Constants.ZRX_TOKEN,
-            value: 0,
-            data: abi.encodeWithSelector(IERC20.approve.selector, Constants.WZRX_TOKEN, total),
-            description: "Approve wZRX to spend ZRX"
-        });
-
-        for (uint256 i = 0; i < delegatees.length; i++) {
-            address childSafe = LibSafeChild.predictChildSafeAddress(staker, delegatees[i]);
-
-            if (childSafe.code.length == 0) {
-                steps[idx++] = LibScript.PlanStep({
-                    to: Constants.SAFE_PROXY_FACTORY,
-                    value: 0,
-                    data: LibSafeChild.deployChildSafeCalldata(staker, delegatees[i]),
-                    description: string.concat("Deploy 1/1 Safe for delegatee ", vm.toString(delegatees[i]))
-                });
-            }
-
-            steps[idx++] = LibScript.PlanStep({
-                to: Constants.WZRX_TOKEN,
-                value: 0,
-                data: abi.encodeWithSelector(IwZRX.depositFor.selector, childSafe, amounts[i]),
-                description: string.concat("Deposit ", vm.toString(amounts[i]), " wZRX into Safe ", vm.toString(childSafe))
-            });
-
-            steps[idx++] = LibScript.PlanStep({
-                to: childSafe,
-                value: 0,
-                data: LibSafeChild.approveDelegateHashCalldata(childSafe, delegatees[i]),
-                description: string.concat("Approve delegate tx on Safe ", vm.toString(childSafe))
-            });
-
-            steps[idx++] = LibScript.PlanStep({
-                to: childSafe,
-                value: 0,
-                data: LibSafeChild.execDelegateCalldata(childSafe, delegatees[i], staker),
-                description: string.concat("Execute delegate tx on Safe ", vm.toString(childSafe))
-            });
-        }
-
-        steps[idx++] = LibScript.PlanStep({
-            to: Constants.ZRX_TOKEN,
-            value: 0,
-            data: abi.encodeWithSelector(IERC20.approve.selector, Constants.WZRX_TOKEN, 0),
-            description: "Reset ZRX approval"
-        });
-
-        LibScript.emitPlanJson(steps);
-    }
-
     function run(address staker, address[] calldata delegatees, uint256[] calldata amounts) external {
         _validate(delegatees, amounts);
         uint256 total = _total(amounts);
@@ -113,7 +43,7 @@ contract WrapGovernanceMultiDelegate is Script {
         _verify(staker, childSafes, delegatees, amounts, balancesBefore, zrxBefore, total);
     }
 
-    function _validate(address[] calldata delegatees, uint256[] calldata amounts) internal pure {
+    function _validate(address[] calldata delegatees, uint256[] calldata amounts) private pure {
         require(delegatees.length > 0, "empty delegatee list");
         require(delegatees.length == amounts.length, "delegatee/amount length mismatch");
         for (uint256 i = 0; i < delegatees.length; i++) {
@@ -122,7 +52,7 @@ contract WrapGovernanceMultiDelegate is Script {
         }
     }
 
-    function _total(uint256[] calldata amounts) internal pure returns (uint256 total) {
+    function _total(uint256[] calldata amounts) private pure returns (uint256 total) {
         for (uint256 i = 0; i < amounts.length; i++) {
             total += amounts[i];
         }
@@ -136,7 +66,7 @@ contract WrapGovernanceMultiDelegate is Script {
         uint256[] memory balancesBefore,
         uint256 zrxBefore,
         uint256 total
-    ) internal view {
+    ) private view {
         for (uint256 i = 0; i < childSafes.length; i++) {
             uint256 after_ = IwZRX(Constants.WZRX_TOKEN).balanceOf(childSafes[i]);
             require(after_ - balancesBefore[i] == amounts[i], "WrapMulti: child Safe balance mismatch");

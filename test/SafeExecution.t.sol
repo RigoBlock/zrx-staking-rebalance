@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Test} from "forge-std/Test.sol";
+import {ZrxFixture} from "./Fixtures.sol";
 import {Constants} from "../src/constants/Constants.sol";
-import {LibScript} from "../src/libraries/LibScript.sol";
 import {StakeAndDelegate} from "../script/StakeAndDelegate.s.sol";
 import {Redelegate} from "../script/Redelegate.s.sol";
 import {WrapGovernance} from "../script/WrapGovernance.s.sol";
@@ -15,15 +14,15 @@ import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
 
 /**
  * @title SafeExecution
- * @notice Simulates executing the proposed Safe calldata from the Safe address itself.
+ * @notice Verifies that operations work when executed from the default Safe address.
  */
-contract SafeExecutionTest is Test {
+contract SafeExecutionTest is ZrxFixture {
     address internal safe;
     address internal delegatee;
     bytes32[] internal targetPools;
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("RPC_URL"), Constants.FORK_BLOCK_NUMBER);
+        _createFork();
         safe = Constants.OX_LABS_DEPLOYMENT_SAFE;
         delegatee = vm.addr(2);
         targetPools = [Constants.TARGET_POOL_31, Constants.TARGET_POOL_48, Constants.TARGET_POOL_34];
@@ -31,16 +30,14 @@ contract SafeExecutionTest is Test {
 
     function testSafeStakeAndDelegate() public {
         _giveZrx(safe, 1000 ether);
+        vm.deal(safe, 10 ether);
 
         bytes32[] memory pools = new bytes32[](2);
         pools[0] = Constants.TARGET_POOL_31;
         pools[1] = Constants.TARGET_POOL_48;
 
         uint256 zrxBefore = IERC20(Constants.ZRX_TOKEN).balanceOf(safe);
-        LibScript.PlanStep[] memory steps =
-            new StakeAndDelegate().generatePlan(safe, 100 ether, 100 ether, pools);
-
-        _executeSteps(steps, safe);
+        new StakeAndDelegate().run(safe, 100 ether, 100 ether, pools);
 
         IStakingProxy.StoredBalance memory bal31 =
             IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
@@ -54,16 +51,15 @@ contract SafeExecutionTest is Test {
 
     function testSafeRedelegateAll() public {
         _giveZrx(safe, 1000 ether);
+        vm.deal(safe, 10 ether);
 
         // Seed a single pool and roll the epoch so the delegation is active.
         bytes32[] memory seedPools = new bytes32[](1);
         seedPools[0] = Constants.TARGET_POOL_31;
-        _safeRunStakeAndDelegate(safe, seedPools, 500 ether);
+        new StakeAndDelegate().run(safe, 500 ether, 500 ether, seedPools);
         _rollEpoch();
 
-        LibScript.PlanStep[] memory steps =
-            new Redelegate().generatePlan("redelegate-all", safe, 0, targetPools);
-        _executeSteps(steps, safe);
+        new Redelegate().run("redelegate-all", safe, 0, targetPools);
 
         IStakingProxy.StoredBalance memory bal31 =
             IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
@@ -80,11 +76,10 @@ contract SafeExecutionTest is Test {
 
     function testSafeWrapLiquid() public {
         _giveZrx(safe, 1000 ether);
+        vm.deal(safe, 10 ether);
 
         bytes32[] memory empty = new bytes32[](0);
-        LibScript.PlanStep[] memory steps =
-            new WrapGovernance().generatePlan("liquid", safe, delegatee, 50 ether, empty);
-        _executeSteps(steps, safe);
+        new WrapGovernance().run("liquid", safe, delegatee, 50 ether, empty);
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(safe), 50 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(safe), delegatee, "delegatee");
@@ -92,24 +87,15 @@ contract SafeExecutionTest is Test {
 
     function testSafeWrapFull() public {
         _giveZrx(safe, 1000 ether);
+        vm.deal(safe, 10 ether);
 
         bytes32[] memory seedPools = new bytes32[](1);
         seedPools[0] = Constants.TARGET_POOL_31;
-        _safeRunStakeAndDelegate(safe, seedPools, 500 ether);
+        new StakeAndDelegate().run(safe, 500 ether, 500 ether, seedPools);
         _rollEpoch();
 
         bytes32[] memory empty = new bytes32[](0);
-        LibScript.PlanStep[] memory steps =
-            new WrapGovernance().generatePlan("full", safe, delegatee, 500 ether, empty);
-
-        // Step 0 undelegates the active stake. The epoch must then advance before the unstake can occur.
-        require(steps.length > 1, "empty plan");
-        _executeStep(steps[0], safe);
-        _rollEpoch();
-
-        for (uint256 i = 1; i < steps.length; i++) {
-            _executeStep(steps[i], safe);
-        }
+        new WrapGovernance().run("full", safe, delegatee, 500 ether, empty);
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(safe), 500 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(safe), delegatee, "delegatee");
@@ -121,26 +107,18 @@ contract SafeExecutionTest is Test {
 
     function testSafeWrapExcludePools() public {
         _giveZrx(safe, 1000 ether);
+        vm.deal(safe, 10 ether);
 
         bytes32[] memory seedPools = new bytes32[](2);
         seedPools[0] = Constants.TARGET_POOL_31;
         seedPools[1] = Constants.TARGET_POOL_48;
-        _safeRunStakeAndDelegate(safe, seedPools, 500 ether);
+        new StakeAndDelegate().run(safe, 500 ether, 500 ether, seedPools);
         _rollEpoch();
 
         // Exclude pool 31 from the wrap; pool 48 is the source.
         bytes32[] memory exclude = new bytes32[](1);
         exclude[0] = Constants.TARGET_POOL_31;
-        LibScript.PlanStep[] memory steps =
-            new WrapGovernance().generatePlan("exclude-pools", safe, delegatee, 250 ether, exclude);
-
-        require(steps.length > 1, "empty plan");
-        _executeStep(steps[0], safe);
-        _rollEpoch();
-
-        for (uint256 i = 1; i < steps.length; i++) {
-            _executeStep(steps[i], safe);
-        }
+        new WrapGovernance().run("exclude-pools", safe, delegatee, 250 ether, exclude);
 
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(safe), 250 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(safe), delegatee, "delegatee");
@@ -155,6 +133,7 @@ contract SafeExecutionTest is Test {
 
     function testSafeWrapMultiDelegate() public {
         _giveZrx(safe, 1000 ether);
+        vm.deal(safe, 10 ether);
 
         address[] memory delegatees = new address[](3);
         delegatees[0] = vm.addr(10);
@@ -166,9 +145,7 @@ contract SafeExecutionTest is Test {
         amounts[1] = 100 ether;
         amounts[2] = 100 ether;
 
-        LibScript.PlanStep[] memory steps =
-            new WrapGovernanceMultiDelegate().generatePlan(safe, delegatees, amounts);
-        _executeSteps(steps, safe);
+        new WrapGovernanceMultiDelegate().run(safe, delegatees, amounts);
 
         assertEq(IERC20(Constants.ZRX_TOKEN).balanceOf(safe), 700 ether, "ZRX balance");
         assertEq(IERC20(Constants.ZRX_TOKEN).allowance(safe, Constants.WZRX_TOKEN), 0, "allowance reset");
@@ -178,40 +155,5 @@ contract SafeExecutionTest is Test {
             assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(childSafe), amounts[i], "child Safe balance");
             assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(childSafe), delegatees[i], "child Safe delegatee");
         }
-    }
-
-    function _executeSteps(LibScript.PlanStep[] memory steps, address sender) internal {
-        for (uint256 i = 0; i < steps.length; i++) {
-            _executeStep(steps[i], sender);
-        }
-    }
-
-    function _executeStep(LibScript.PlanStep memory step, address sender) internal {
-        vm.prank(sender);
-        (bool success, bytes memory returndata) = step.to.call{value: step.value}(step.data);
-        if (!success) {
-            assembly {
-                revert(add(returndata, 32), mload(returndata))
-            }
-        }
-    }
-
-    function _safeRunStakeAndDelegate(address staker, bytes32[] memory pools, uint256 amount) internal {
-        LibScript.PlanStep[] memory steps = new StakeAndDelegate().generatePlan(staker, amount, amount, pools);
-        _executeSteps(steps, staker);
-    }
-
-    function _giveZrx(address account, uint256 amount) internal {
-        bytes32 slot = keccak256(abi.encode(account, uint256(0)));
-        vm.store(Constants.ZRX_TOKEN, slot, bytes32(amount));
-        assertEq(IERC20(Constants.ZRX_TOKEN).balanceOf(account), amount, "zrx balance");
-    }
-
-    function _rollEpoch() internal {
-        IStakingProxy stake = IStakingProxy(Constants.STAKING_PROXY);
-        uint256 start = stake.currentEpochStartTimeInSeconds();
-        uint256 duration = stake.epochDurationInSeconds();
-        vm.warp(start + duration + 1);
-        stake.endEpoch();
     }
 }

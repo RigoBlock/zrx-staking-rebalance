@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Test} from "forge-std/Test.sol";
+import {ZrxFixture} from "./Fixtures.sol";
 import {Constants} from "../src/constants/Constants.sol";
 import {LibStaking} from "../src/libraries/LibStaking.sol";
 import {StakeAndDelegate} from "../script/StakeAndDelegate.s.sol";
@@ -13,13 +13,13 @@ import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IwZRX} from "../src/interfaces/IwZRX.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
 
-contract OperationsTest is Test {
+contract OperationsTest is ZrxFixture {
     address internal staker;
     address internal delegatee;
     bytes32[] internal targetPools;
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("RPC_URL"), Constants.FORK_BLOCK_NUMBER);
+        _createFork();
         staker = vm.addr(1);
         delegatee = vm.addr(2);
         targetPools = [Constants.TARGET_POOL_31, Constants.TARGET_POOL_48, Constants.TARGET_POOL_34];
@@ -168,19 +168,5 @@ contract OperationsTest is Test {
         uint256[] memory parts = LibStaking.splitByWeights(100 ether, weights);
         assertEq(parts[0], 75 ether);
         assertEq(parts[1], 25 ether);
-    }
-
-    function _giveZrx(address account, uint256 amount) internal {
-        bytes32 slot = keccak256(abi.encode(account, uint256(0)));
-        vm.store(Constants.ZRX_TOKEN, slot, bytes32(amount));
-        assertEq(IERC20(Constants.ZRX_TOKEN).balanceOf(account), amount, "zrx balance");
-    }
-
-    function _rollEpoch() internal {
-        IStakingProxy stake = IStakingProxy(Constants.STAKING_PROXY);
-        uint256 start = stake.currentEpochStartTimeInSeconds();
-        uint256 duration = stake.epochDurationInSeconds();
-        vm.warp(start + duration + 1);
-        stake.endEpoch();
     }
 }

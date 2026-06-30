@@ -4,9 +4,12 @@ pragma solidity ^0.8.0;
 import {Script} from "forge-std/Script.sol";
 import {Constants} from "../src/constants/Constants.sol";
 import {LibStaking} from "../src/libraries/LibStaking.sol";
-import {LibScript} from "../src/libraries/LibScript.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
 
+/**
+ * @title Redelegate
+ * @notice Rebalances or removes existing ZRX delegations across the 0x staking proxy.
+ */
 contract Redelegate is Script {
     uint256 internal constant MAX_POOL_ID = 100;
 
@@ -14,19 +17,6 @@ contract Redelegate is Script {
         UndelegateAll,
         RedelegateAll,
         RedelegateAmount
-    }
-
-    function generatePlan(
-        string calldata modeName,
-        address staker,
-        uint256 targetAmount,
-        bytes32[] calldata targetPoolIds
-    ) external view returns (LibScript.PlanStep[] memory) {
-        Mode mode = parseMode(modeName);
-        bytes[] memory calls = _buildCalls(mode, staker, targetAmount, targetPoolIds);
-        LibScript.PlanStep[] memory steps = _buildPlanStep(calls);
-        LibScript.emitPlanJson(steps);
-        return steps;
     }
 
     function run(string calldata modeName, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
@@ -50,21 +40,8 @@ contract Redelegate is Script {
         _verify(mode, staker, targetAmount, targetPoolIds, delegations, totalDelegated);
     }
 
-    function _buildPlanStep(bytes[] memory calls) internal pure returns (LibScript.PlanStep[] memory steps) {
-        if (calls.length == 0) {
-            return new LibScript.PlanStep[](0);
-        }
-        steps = new LibScript.PlanStep[](1);
-        steps[0] = LibScript.PlanStep({
-            to: Constants.STAKING_PROXY,
-            value: 0,
-            data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, calls),
-            description: "Redelegate"
-        });
-    }
-
     function _buildCalls(Mode mode, address staker, uint256 targetAmount, bytes32[] calldata targetPoolIds)
-        internal
+        private
         view
         returns (bytes[] memory calls)
     {
@@ -74,13 +51,13 @@ contract Redelegate is Script {
         require(totalDelegated > 0, "no delegated stake");
 
         if (mode == Mode.UndelegateAll) {
-            calls = buildUndelegateCalls(delegations);
+            calls = _buildUndelegateCalls(delegations);
         } else if (mode == Mode.RedelegateAll) {
             require(targetPoolIds.length > 0, "no target pools");
-            calls = buildRebalanceCalls(delegations, targetPoolIds, totalDelegated);
+            calls = _buildRebalanceCalls(delegations, targetPoolIds, totalDelegated);
         } else {
             require(targetPoolIds.length > 0, "no target pools");
-            calls = buildRedelegateAmountCalls(delegations, targetPoolIds, targetAmount);
+            calls = _buildRedelegateAmountCalls(delegations, targetPoolIds, targetAmount);
         }
     }
 
@@ -91,7 +68,7 @@ contract Redelegate is Script {
         bytes32[] calldata targetPoolIds,
         LibStaking.Delegation[] memory beforeDelegations,
         uint256 totalDelegatedBefore
-    ) internal view {
+    ) private view {
         if (mode == Mode.UndelegateAll) {
             // Every previously active delegation must be scheduled for removal.
             for (uint256 i = 0; i < beforeDelegations.length; i++) {
@@ -135,15 +112,15 @@ contract Redelegate is Script {
         }
     }
 
-    function parseMode(string calldata modeName) internal pure returns (Mode) {
+    function parseMode(string calldata modeName) private pure returns (Mode) {
         if (keccak256(bytes(modeName)) == keccak256(bytes("undelegate-all"))) return Mode.UndelegateAll;
         if (keccak256(bytes(modeName)) == keccak256(bytes("redelegate-all"))) return Mode.RedelegateAll;
         if (keccak256(bytes(modeName)) == keccak256(bytes("redelegate-amount"))) return Mode.RedelegateAmount;
         revert("unknown mode");
     }
 
-    function buildUndelegateCalls(LibStaking.Delegation[] memory delegations)
-        internal
+    function _buildUndelegateCalls(LibStaking.Delegation[] memory delegations)
+        private
         pure
         returns (bytes[] memory calls)
     {
@@ -153,11 +130,11 @@ contract Redelegate is Script {
         }
     }
 
-    function buildRebalanceCalls(
+    function _buildRebalanceCalls(
         LibStaking.Delegation[] memory delegations,
         bytes32[] calldata targetPoolIds,
         uint256 targetTotal
-    ) internal pure returns (bytes[] memory calls) {
+    ) private pure returns (bytes[] memory calls) {
         calls = new bytes[](delegations.length + targetPoolIds.length);
         for (uint256 i = 0; i < delegations.length; i++) {
             calls[i] = LibStaking.encodeUndelegate(delegations[i].poolId, delegations[i].amount);
@@ -168,16 +145,16 @@ contract Redelegate is Script {
         }
     }
 
-    function buildRedelegateAmountCalls(
+    function _buildRedelegateAmountCalls(
         LibStaking.Delegation[] memory delegations,
         bytes32[] calldata targetPoolIds,
         uint256 targetAmount
-    ) internal pure returns (bytes[] memory calls) {
+    ) private pure returns (bytes[] memory calls) {
         uint256 currentTarget = 0;
         uint256 nonTargetTotal = 0;
 
         for (uint256 i = 0; i < delegations.length; i++) {
-            if (isTarget(delegations[i].poolId, targetPoolIds)) {
+            if (_isTarget(delegations[i].poolId, targetPoolIds)) {
                 currentTarget += delegations[i].amount;
             } else {
                 nonTargetTotal += delegations[i].amount;
@@ -194,14 +171,14 @@ contract Redelegate is Script {
 
             uint256 sourceCount = 0;
             for (uint256 i = 0; i < delegations.length; i++) {
-                if (!isTarget(delegations[i].poolId, targetPoolIds)) sourceCount++;
+                if (!_isTarget(delegations[i].poolId, targetPoolIds)) sourceCount++;
             }
 
             LibStaking.Delegation[] memory sources = new LibStaking.Delegation[](sourceCount);
             uint256 idx = 0;
             uint256[] memory weights = new uint256[](sourceCount);
             for (uint256 i = 0; i < delegations.length; i++) {
-                if (!isTarget(delegations[i].poolId, targetPoolIds)) {
+                if (!_isTarget(delegations[i].poolId, targetPoolIds)) {
                     sources[idx] = delegations[i];
                     weights[idx] = delegations[i].amount;
                     idx++;
@@ -223,14 +200,14 @@ contract Redelegate is Script {
 
             uint256 sourceCount = 0;
             for (uint256 i = 0; i < delegations.length; i++) {
-                if (isTarget(delegations[i].poolId, targetPoolIds)) sourceCount++;
+                if (_isTarget(delegations[i].poolId, targetPoolIds)) sourceCount++;
             }
 
             LibStaking.Delegation[] memory sources = new LibStaking.Delegation[](sourceCount);
             uint256 idx = 0;
             uint256[] memory weights = new uint256[](sourceCount);
             for (uint256 i = 0; i < delegations.length; i++) {
-                if (isTarget(delegations[i].poolId, targetPoolIds)) {
+                if (_isTarget(delegations[i].poolId, targetPoolIds)) {
                     sources[idx] = delegations[i];
                     weights[idx] = delegations[i].amount;
                     idx++;
@@ -245,19 +222,7 @@ contract Redelegate is Script {
         }
     }
 
-    function isTarget(bytes32 poolId, bytes32[] calldata targetPoolIds)
-        internal
-        pure
-        returns (bool)
-    {
-        return _isTarget(poolId, targetPoolIds);
-    }
-
-    function _isTarget(bytes32 poolId, bytes32[] calldata targetPoolIds)
-        internal
-        pure
-        returns (bool)
-    {
+    function _isTarget(bytes32 poolId, bytes32[] calldata targetPoolIds) private pure returns (bool) {
         for (uint256 i = 0; i < targetPoolIds.length; i++) {
             if (poolId == targetPoolIds[i]) return true;
         }

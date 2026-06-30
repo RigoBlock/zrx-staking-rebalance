@@ -4,11 +4,14 @@ pragma solidity ^0.8.0;
 import {Script, console2} from "forge-std/Script.sol";
 import {Constants} from "../src/constants/Constants.sol";
 import {LibStaking} from "../src/libraries/LibStaking.sol";
-import {LibScript} from "../src/libraries/LibScript.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IwZRX} from "../src/interfaces/IwZRX.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
 
+/**
+ * @title WrapGovernance
+ * @notice Wraps ZRX into the wZRX governance token and delegates voting power.
+ */
 contract WrapGovernance is Script {
     uint256 internal constant MAX_POOL_ID = 100;
     uint8 internal constant UNDELEGATED = 0;
@@ -18,37 +21,6 @@ contract WrapGovernance is Script {
         Full,
         Liquid,
         ExcludePools
-    }
-
-    function generatePlan(
-        string calldata modeName,
-        address staker,
-        address delegatee,
-        uint256 amount,
-        bytes32[] calldata excludePoolIds
-    ) external view returns (LibScript.PlanStep[] memory) {
-        Mode mode = parseMode(modeName);
-        LibScript.PlanStep[] memory steps;
-        if (mode == Mode.Unstake) {
-            steps = _unstakeSteps(amount);
-        } else if (mode == Mode.Liquid) {
-            steps = _wrapSteps(staker, delegatee, amount);
-        } else {
-            // Full and ExcludePools both start by undelegating stake.
-            (LibStaking.Delegation[] memory delegations,) =
-                LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
-
-            bytes[] memory undelegateCalls;
-            if (mode == Mode.Full) {
-                undelegateCalls = _buildUndelegateCalls(delegations);
-            } else {
-                undelegateCalls = _buildExcludeUndelegateCalls(delegations, excludePoolIds, amount);
-            }
-
-            steps = _wrapWithUndelegateSteps(undelegateCalls, staker, delegatee, amount);
-        }
-        LibScript.emitPlanJson(steps);
-        return steps;
     }
 
     function run(
@@ -73,7 +45,7 @@ contract WrapGovernance is Script {
         console2.log("WrapGovernance done");
     }
 
-    function parseMode(string calldata modeName) internal pure returns (Mode) {
+    function parseMode(string calldata modeName) private pure returns (Mode) {
         if (keccak256(bytes(modeName)) == keccak256(bytes("unstake"))) return Mode.Unstake;
         if (keccak256(bytes(modeName)) == keccak256(bytes("full"))) return Mode.Full;
         if (keccak256(bytes(modeName)) == keccak256(bytes("liquid"))) return Mode.Liquid;
@@ -81,7 +53,7 @@ contract WrapGovernance is Script {
         revert("unknown mode");
     }
 
-    function _unstake(address staker, uint256 amount) internal {
+    function _unstake(address staker, uint256 amount) private {
         IERC20 zrx = IERC20(Constants.ZRX_TOKEN);
         uint256 zrxBefore = zrx.balanceOf(staker);
 
@@ -100,13 +72,13 @@ contract WrapGovernance is Script {
         address delegateeBefore;
     }
 
-    function _readWrapState(address staker) internal view returns (WrapState memory state) {
+    function _readWrapState(address staker) private view returns (WrapState memory state) {
         IwZRX wzrx = IwZRX(Constants.WZRX_TOKEN);
         state.wzrxBefore = wzrx.balanceOf(staker);
         state.delegateeBefore = wzrx.delegates(staker);
     }
 
-    function _wrapLiquid(address staker, address delegatee, uint256 amount) internal {
+    function _wrapLiquid(address staker, address delegatee, uint256 amount) private {
         WrapState memory state = _readWrapState(staker);
 
         vm.startBroadcast(staker);
@@ -116,7 +88,7 @@ contract WrapGovernance is Script {
         _verifyWrap(staker, delegatee, amount, state.wzrxBefore);
     }
 
-    function _wrapFull(address staker, address delegatee, uint256 amount) internal {
+    function _wrapFull(address staker, address delegatee, uint256 amount) private {
         (LibStaking.Delegation[] memory delegations,) =
             LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
         require(delegations.length > 0, "no delegated stake");
@@ -141,7 +113,7 @@ contract WrapGovernance is Script {
         address delegatee,
         uint256 amount,
         bytes32[] calldata excludePoolIds
-    ) internal {
+    ) private {
         (LibStaking.Delegation[] memory delegations, uint256 totalDelegated) =
             LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
         require(totalDelegated > 0, "no delegated stake");
@@ -161,14 +133,14 @@ contract WrapGovernance is Script {
         _verifyActiveDelegation(staker, totalDelegated - amount, "WrapGovernance: exclude-pools delegation mismatch");
     }
 
-    function _approveWrapDelegateReset(address staker, address delegatee, uint256 amount) internal {
+    function _approveWrapDelegateReset(address staker, address delegatee, uint256 amount) private {
         IERC20(Constants.ZRX_TOKEN).approve(Constants.WZRX_TOKEN, amount);
         IwZRX(Constants.WZRX_TOKEN).depositFor(staker, amount);
         IwZRX(Constants.WZRX_TOKEN).delegate(delegatee);
         IERC20(Constants.ZRX_TOKEN).approve(Constants.WZRX_TOKEN, 0);
     }
 
-    function _advanceEpoch() internal {
+    function _advanceEpoch() private {
         IStakingProxy stake = IStakingProxy(Constants.STAKING_PROXY);
         uint256 startTime = stake.currentEpochStartTimeInSeconds();
         uint256 duration = stake.epochDurationInSeconds();
@@ -180,7 +152,7 @@ contract WrapGovernance is Script {
         address expectedDelegatee,
         uint256 expectedIncrease,
         uint256 wzrxBefore
-    ) internal view {
+    ) private view {
         IwZRX wzrx = IwZRX(Constants.WZRX_TOKEN);
         uint256 wzrxAfter = wzrx.balanceOf(staker);
         require(wzrxAfter - wzrxBefore == expectedIncrease, "WrapGovernance: wZRX balance increase mismatch");
@@ -192,78 +164,13 @@ contract WrapGovernance is Script {
         );
     }
 
-    function _verifyActiveDelegation(address staker, uint256 expectedTotal, string memory message) internal view {
+    function _verifyActiveDelegation(address staker, uint256 expectedTotal, string memory message) private view {
         (, uint256 activeTotal) = LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
         require(activeTotal == expectedTotal, message);
     }
 
-    function _unstakeSteps(uint256 amount)
-        internal
-        pure
-        returns (LibScript.PlanStep[] memory steps)
-    {
-        steps = new LibScript.PlanStep[](1);
-        steps[0] = LibScript.PlanStep({
-            to: Constants.STAKING_PROXY,
-            value: 0,
-            data: abi.encodeWithSelector(IStakingProxy.unstake.selector, amount),
-            description: "Unstake ZRX"
-        });
-    }
-
-    function _wrapSteps(address staker, address delegatee, uint256 amount)
-        internal
-        pure
-        returns (LibScript.PlanStep[] memory steps)
-    {
-        steps = new LibScript.PlanStep[](4);
-        steps[0] = LibScript.PlanStep({
-            to: Constants.ZRX_TOKEN,
-            value: 0,
-            data: abi.encodeWithSelector(IERC20.approve.selector, Constants.WZRX_TOKEN, amount),
-            description: "Approve wZRX to spend ZRX"
-        });
-        steps[1] = LibScript.PlanStep({
-            to: Constants.WZRX_TOKEN,
-            value: 0,
-            data: abi.encodeWithSelector(IwZRX.depositFor.selector, staker, amount),
-            description: "Deposit ZRX for wZRX"
-        });
-        steps[2] = LibScript.PlanStep({
-            to: Constants.WZRX_TOKEN,
-            value: 0,
-            data: abi.encodeWithSelector(IwZRX.delegate.selector, delegatee),
-            description: "Delegate wZRX voting power"
-        });
-        steps[3] = LibScript.PlanStep({
-            to: Constants.ZRX_TOKEN,
-            value: 0,
-            data: abi.encodeWithSelector(IERC20.approve.selector, Constants.WZRX_TOKEN, 0),
-            description: "Reset ZRX approval"
-        });
-    }
-
-    function _wrapWithUndelegateSteps(
-        bytes[] memory undelegateCalls,
-        address staker,
-        address delegatee,
-        uint256 amount
-    ) internal pure returns (LibScript.PlanStep[] memory steps) {
-        LibScript.PlanStep[] memory wrapSteps = _wrapSteps(staker, delegatee, amount);
-        steps = new LibScript.PlanStep[](1 + wrapSteps.length);
-        steps[0] = LibScript.PlanStep({
-            to: Constants.STAKING_PROXY,
-            value: 0,
-            data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, undelegateCalls),
-            description: "Undelegate stake to be wrapped"
-        });
-        for (uint256 i = 0; i < wrapSteps.length; i++) {
-            steps[1 + i] = wrapSteps[i];
-        }
-    }
-
     function _buildUndelegateCalls(LibStaking.Delegation[] memory delegations)
-        internal
+        private
         pure
         returns (bytes[] memory calls)
     {
@@ -277,11 +184,11 @@ contract WrapGovernance is Script {
         LibStaking.Delegation[] memory delegations,
         bytes32[] calldata excludePoolIds,
         uint256 amount
-    ) internal pure returns (bytes[] memory calls) {
+    ) private pure returns (bytes[] memory calls) {
         uint256 sourceCount = 0;
         uint256 sourceTotal = 0;
         for (uint256 i = 0; i < delegations.length; i++) {
-            if (!isExcluded(delegations[i].poolId, excludePoolIds)) {
+            if (!_isExcluded(delegations[i].poolId, excludePoolIds)) {
                 sourceCount++;
                 sourceTotal += delegations[i].amount;
             }
@@ -293,7 +200,7 @@ contract WrapGovernance is Script {
         uint256[] memory weights = new uint256[](sourceCount);
         uint256 idx = 0;
         for (uint256 i = 0; i < delegations.length; i++) {
-            if (!isExcluded(delegations[i].poolId, excludePoolIds)) {
+            if (!_isExcluded(delegations[i].poolId, excludePoolIds)) {
                 sources[idx] = delegations[i];
                 weights[idx] = delegations[i].amount;
                 idx++;
@@ -307,11 +214,7 @@ contract WrapGovernance is Script {
         }
     }
 
-    function isExcluded(bytes32 poolId, bytes32[] calldata excludePoolIds)
-        internal
-        pure
-        returns (bool)
-    {
+    function _isExcluded(bytes32 poolId, bytes32[] calldata excludePoolIds) private pure returns (bool) {
         for (uint256 i = 0; i < excludePoolIds.length; i++) {
             if (poolId == excludePoolIds[i]) return true;
         }

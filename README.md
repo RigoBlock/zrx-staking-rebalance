@@ -16,18 +16,23 @@ script/                   # Foundry Solidity scripts
   WrapGovernance.s.sol
   WrapGovernanceMultiDelegate.s.sol
   TreasuryMigration.s.sol
-sh/                       # Bash wrappers, Safe helpers, constants, and the interactive runner
-  common_safe.sh          # Safe hash/sign/post helpers
-  constants.sh            # Safe-related constants
-  safe-propose.sh         # Propose a plan to a Safe
-  safe-confirm.sh         # Confirm a Safe transaction
+sh/                       # Bash wrappers and the interactive runner
+  common.sh               # Shared shell helpers
+  op.sh                   # Interactive runner
+  run-forge.sh            # Low-level forge script wrapper
+  stake-and-delegate.sh
+  delegate-equal.sh
+  redelegate.sh
+  wrap-governance.sh
+  treasury.sh
 src/
   interfaces/             # Minimal Solidity contract interfaces
   constants/Constants.sol # Mainnet addresses and target pool ids
-  libraries/              # Shared helpers (LibStaking, LibScript, LibSafeChild)
+  libraries/              # Shared helpers (LibStaking, LibSafeChild)
 test/
+  Fixtures.sol            # Common test setup helpers
   Operations.t.sol        # Foundry fork tests (direct script execution)
-  SafeExecution.t.sol     # Foundry fork tests (execute proposed Safe calldata)
+  SafeExecution.t.sol     # Foundry fork tests (execute from the Safe address)
 ```
 
 `WrapGovernanceMultiDelegate` wraps ZRX into wZRX and splits it across
@@ -96,15 +101,13 @@ never logs the private key.
 
 ### Per-action scripts
 
-Most operations have three package scripts:
+Each operation has two package scripts:
 
 - `op:<name>` — execute (broadcast, adds Foundry's `--broadcast` flag)
 - `op:sim:<name>` — simulate (no `--broadcast`, Foundry runs locally)
-- `op:plan:<name>` — write a JSON plan to `out/plan.json` (`--plan`)
 
-Plan mode is available for the staking/redelegation operations. Wrap and
-treasury operations support simulate and execute, but not plan output, because
-they include time-dependent or governance-specific steps.
+Foundry scripts simulate by default and only broadcast when `--broadcast` is
+passed, so `op:sim:*` is the same script without that flag.
 
 Examples:
 
@@ -114,9 +117,6 @@ yarn op:stake-delegate 0x... 1000000
 
 # Simulate first
 yarn op:sim:stake-delegate 0x... 1000000
-
-# Write a plan JSON instead of broadcasting
-yarn op:plan:stake-delegate 0x... 1000000
 
 # Delegate 1,000,000 ZRX of existing undelegated stake equally across target pools
 yarn op:delegate-equal 0x... 1000000
@@ -163,78 +163,7 @@ LEDGER=1 ./sh/redelegate.sh --broadcast redelegate-all 0x...
 
 # Simulate (no signer required beyond the --from address)
 ./sh/redelegate.sh redelegate-all 0x...
-
-# Generate a JSON plan
-./sh/stake-and-delegate.sh --plan 0x... 1000000
 ```
-
-### Plans and Safe transactions
-
-Generate a JSON plan without broadcasting:
-
-```bash
-yarn op:plan:stake-delegate 0x... 1000000
-cat out/plan.json
-```
-
-Propose the plan to a Safe:
-
-```bash
-# Propose to the default 0x Labs deployment Safe
-./sh/safe-propose.sh out/plan.json --private-key 0x...
-# or with a hardware wallet
-./sh/safe-propose.sh out/plan.json --ledger --sender 0x<ownerAddress>
-# or pass an offline signature
-SIG=$(cast wallet sign --no-hash 0x<safeTxHash>)
-./sh/safe-propose.sh out/plan.json --signature $SIG --sender 0x<ownerAddress>
-
-# Target a different Safe by passing its address
-./sh/safe-propose.sh 0x<safeAddress> out/plan.json --private-key 0x...
-```
-
-`sh/safe-propose.sh` computes the Safe transaction hash through the Safe
-contract, signs it with `cast wallet sign`, and POSTs it to the Safe Transaction
-Service. Each plan step becomes a separate Safe transaction. The service URL is a
-constant in `sh/constants.sh` (mainnet only).
-
-Additional owners can confirm the proposal from the command line:
-
-```bash
-# Confirm for the default Safe
-./sh/safe-confirm.sh 0x<safeTxHash> --private-key 0x...
-# or with a hardware wallet
-SIG=$(cast wallet sign --no-hash 0x<safeTxHash>)
-./sh/safe-confirm.sh 0x<safeTxHash> --signature $SIG --sender 0x<ownerAddress>
-
-# Confirm for a custom Safe
-./sh/safe-confirm.sh 0x<safeAddress> 0x<safeTxHash> --private-key 0x...
-```
-
-Once the threshold is reached, execute the transaction in the Safe UI.
-
-### Default Safe wallet
-
-Proposals are submitted to the 0x Labs deployment Safe by default:
-
-```
-0x8E5DE7118a596E99B0563D3022039c11927f4827
-```
-
-This address is taken from 0x Settler's mainnet `chain_config.json` and is the
-`OX_LABS_DEPLOYMENT_SAFE` constant in `src/constants/Constants.sol`. To target a
-different Safe, set the `SAFE_ADDRESS` environment variable or pass the address
-as the first argument to `safe-propose.sh` / `safe-confirm.sh`:
-
-```bash
-# Use the default Safe
-./sh/safe-propose.sh out/plan.json --private-key 0x...
-
-# Use a custom Safe
-SAFE_ADDRESS=0x... ./sh/safe-propose.sh out/plan.json --private-key 0x...
-./sh/safe-propose.sh 0x... out/plan.json --private-key 0x...
-```
-
-The default is defined in `sh/constants.sh`.
 
 ## Hardware wallets
 
@@ -252,14 +181,17 @@ Always simulate first with `yarn op:sim:*` (no `--broadcast`).
 ```bash
 yarn build              # Compile Foundry scripts
 yarn lint               # Run forge lint
-yarn test:forge         # Foundry fork tests (requires RPC_URL)
-yarn test:foundry       # alias for test:forge
+yarn test:foundry       # Foundry fork tests (requires RPC_URL)
 ```
 
 Fork tests are pinned to the mainnet block defined by `Constants.FORK_BLOCK_NUMBER`
 so each run is reproducible. Foundry caches forked RPC state in
 `~/.foundry/cache/rpc`; in CI this directory is cached so the pinned block is only
 fetched once per PR. Tests fail explicitly when `RPC_URL` is not set.
+
+Tests call the script `run()` functions directly and mock chain state (balances,
+storage slots, time) on the fork, so the same execution code is exercised without
+needing a separate plan-generation path.
 
 ## Security
 
@@ -269,9 +201,6 @@ See [`docs/SECURITY.md`](docs/SECURITY.md).
   `PRIVATE_KEY` only for the subprocess lifetime.
 - Prefer hardware wallets for production operations.
 - Simulate every operation before broadcasting.
-- Safe transactions are proposed/confirmed with `cast` + direct Safe
-  Transaction Service `curl` calls (no Safe SDK) and executed through the Safe
-  UI once the threshold is reached.
 
 ## Repository access
 

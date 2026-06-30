@@ -51,13 +51,13 @@ contract TreasuryMigration is Script {
         }
     }
 
-    function parseMode(string calldata modeName) internal pure returns (Mode) {
+    function parseMode(string calldata modeName) private pure returns (Mode) {
         if (keccak256(bytes(modeName)) == keccak256(bytes("propose"))) return Mode.Propose;
         if (keccak256(bytes(modeName)) == keccak256(bytes("execute"))) return Mode.Execute;
         revert("unknown mode");
     }
 
-    function buildActions() internal view returns (IZrxTreasury.ProposedAction[] memory actions) {
+    function buildActions() private view returns (IZrxTreasury.ProposedAction[] memory actions) {
         uint256 zrx = IERC20(Constants.ZRX_TOKEN).balanceOf(Constants.OLD_ZRX_TREASURY);
         uint256 wCelo = IERC20(Constants.WCELO_TOKEN).balanceOf(Constants.OLD_ZRX_TREASURY);
         uint256 matic = IERC20(Constants.MATIC_TOKEN).balanceOf(Constants.OLD_ZRX_TREASURY);

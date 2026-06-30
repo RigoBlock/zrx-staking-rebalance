@@ -4,16 +4,11 @@ set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
 BROADCAST=false
-PLAN=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --broadcast)
       BROADCAST=true
-      shift
-      ;;
-    --plan)
-      PLAN=true
       shift
       ;;
     --)
@@ -52,32 +47,10 @@ if [ "$BROADCAST" = true ]; then
   BROADCAST_FLAG="--broadcast"
 fi
 
-mkdir -p "$REPO_ROOT/out"
-
-if [ "$PLAN" = true ]; then
-  LOG_FILE="$(mktemp)"
-  # shellcheck disable=SC2086
-  forge script "${SCRIPT}:${CONTRACT_NAME}" \
-    --rpc-url "$RPC_URL" \
-    --slow \
-    "${SIGNER_FLAGS[@]}" \
-    "$@" 2>&1 | tee "$LOG_FILE"
-
-  awk '/---PLAN_JSON_START---/{flag=1;next}/---PLAN_JSON_END---/{flag=0}flag' "$LOG_FILE" \
-    > "$REPO_ROOT/out/plan.json"
-  rm -f "$LOG_FILE"
-
-  if [ ! -s "$REPO_ROOT/out/plan.json" ]; then
-    echo "ERROR: could not extract plan JSON from script output" >&2
-    exit 1
-  fi
-  echo "Plan written to $REPO_ROOT/out/plan.json"
-else
-  # shellcheck disable=SC2086
-  forge script "${SCRIPT}:${CONTRACT_NAME}" \
-    --rpc-url "$RPC_URL" \
-    $BROADCAST_FLAG \
-    --slow \
-    "${SIGNER_FLAGS[@]}" \
-    "$@"
-fi
+# shellcheck disable=SC2086
+forge script "${SCRIPT}:${CONTRACT_NAME}" \
+  --rpc-url "$RPC_URL" \
+  $BROADCAST_FLAG \
+  --slow \
+  "${SIGNER_FLAGS[@]}" \
+  "$@"

@@ -4,16 +4,11 @@ set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
 BROADCAST=false
-PLAN=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --broadcast)
       BROADCAST=true
-      shift
-      ;;
-    --plan)
-      PLAN=true
       shift
       ;;
     --)
@@ -44,19 +39,11 @@ if [ "$#" -gt 0 ]; then
   POOLS="$(build_pool_array "$@")"
 fi
 
-SIG="run(string,address,uint256,bytes32[])"
-if [ "$PLAN" = true ]; then
-  SIG="generatePlan(string,address,uint256,bytes32[])"
-fi
-
 FLAGS=()
 if [ "$BROADCAST" = true ]; then
   FLAGS+=(--broadcast)
 fi
-if [ "$PLAN" = true ]; then
-  FLAGS+=(--plan)
-fi
 
 exec "$(dirname "$0")/run-forge.sh" "${FLAGS[@]}" "$REPO_ROOT/script/Redelegate.s.sol" \
-  --sig "$SIG" \
+  --sig "run(string,address,uint256,bytes32[])" \
   "$MODE" "$STAKER" "$TARGET_AMOUNT" "$POOLS"
