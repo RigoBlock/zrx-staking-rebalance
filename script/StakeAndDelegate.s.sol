@@ -26,7 +26,12 @@ contract StakeAndDelegate is Script {
     /// @param delegateAmount ZRX to delegate. Pass USE_FULL_BALANCE to delegate the full staked + undelegated balance.
     ///                       Pass 0 with stakeAmount > 0 to delegate exactly the staked amount.
     /// @param poolsCsv Comma-separated target pool ids. Empty string uses defaultTargetPools().
-    function run(address staker, uint256 stakeAmount, uint256 delegateAmount, string memory poolsCsv) external {
+    function run(
+        address staker,
+        uint256 stakeAmount,
+        uint256 delegateAmount,
+        string memory poolsCsv
+    ) external {
         if (staker == address(0)) staker = Constants.DEFAULT_STAKER;
         require(staker != address(0), "Invalid staker");
 
@@ -37,8 +42,10 @@ contract StakeAndDelegate is Script {
         uint256 actualStake = stakeAmount == Constants.USE_FULL_BALANCE ? zrxBefore : stakeAmount;
         uint256 actualDelegate;
         if (delegateAmount == Constants.USE_FULL_BALANCE) {
-            uint256 undelegatedBefore = IStakingProxy(Constants.STAKING_PROXY)
-                .getOwnerStakeByStatus(staker, LibStaking.UNDELEGATED).currentEpochBalance;
+            uint256 undelegatedBefore =
+                IStakingProxy(Constants.STAKING_PROXY)
+            .getOwnerStakeByStatus(staker, LibStaking.UNDELEGATED)
+            .currentEpochBalance;
             actualDelegate = actualStake + undelegatedBefore;
         } else if (delegateAmount == 0 && actualStake > 0) {
             actualDelegate = actualStake;
@@ -52,7 +59,9 @@ contract StakeAndDelegate is Script {
                 Call({
                     target: Constants.ZRX_TOKEN,
                     value: 0,
-                    data: abi.encodeWithSelector(IERC20.approve.selector, Constants.ERC20_PROXY, actualStake)
+                    data: abi.encodeWithSelector(
+                        IERC20.approve.selector, Constants.ERC20_PROXY, actualStake
+                    )
                 })
             );
             _calls.push(
@@ -120,7 +129,8 @@ contract StakeAndDelegate is Script {
             uint256 scheduledAfter = 0;
             for (uint256 i = 0; i < _pools.length; i++) {
                 uint256 expected = _beforePerPool[i] + parts[i];
-                uint256 after_ = staking.getStakeDelegatedToPoolByOwner(staker, _pools[i]).nextEpochBalance;
+                uint256 after_ =
+                    staking.getStakeDelegatedToPoolByOwner(staker, _pools[i]).nextEpochBalance;
                 require(after_ == expected, "StakeAndDelegate: pool delegation mismatch");
                 scheduledAfter += after_;
             }
@@ -141,7 +151,8 @@ contract StakeAndDelegate is Script {
         for (uint256 i = 0; i < _pools.length; i++) {
             _beforePerPool.push(
                 IStakingProxy(Constants.STAKING_PROXY)
-                    .getStakeDelegatedToPoolByOwner(staker, _pools[i]).nextEpochBalance
+                .getStakeDelegatedToPoolByOwner(staker, _pools[i])
+                .nextEpochBalance
             );
         }
     }

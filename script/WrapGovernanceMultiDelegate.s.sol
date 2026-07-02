@@ -23,7 +23,9 @@ contract WrapGovernanceMultiDelegate is Script {
     uint256[] internal _balancesBefore;
 
     /// @notice Wrap and split across child Safes. Pass staker = address(0) to use the default staker.
-    function run(address staker, address[] calldata delegatees, uint256[] calldata amounts) external {
+    function run(address staker, address[] calldata delegatees, uint256[] calldata amounts)
+        external
+    {
         if (staker == address(0)) staker = Constants.DEFAULT_STAKER;
         require(staker != address(0), "Invalid staker");
 
@@ -133,7 +135,9 @@ contract WrapGovernanceMultiDelegate is Script {
         for (uint256 i = 0; i < _childSafes.length; i++) {
             address childSafe = _childSafes[i];
             uint256 after_ = IwZRX(Constants.WZRX_TOKEN).balanceOf(childSafe);
-            require(after_ - _balancesBefore[i] == amounts[i], "WrapMulti: child Safe balance mismatch");
+            require(
+                after_ - _balancesBefore[i] == amounts[i], "WrapMulti: child Safe balance mismatch"
+            );
             require(
                 IwZRX(Constants.WZRX_TOKEN).delegates(childSafe) == delegatees[i],
                 "WrapMulti: child Safe delegatee mismatch"

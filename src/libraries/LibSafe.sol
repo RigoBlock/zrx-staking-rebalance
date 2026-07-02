@@ -104,12 +104,13 @@ library LibSafe {
         }
     }
 
-    function _executeCallsViaSafe(address safe, Call[] storage calls) private returns (bool executed) {
+    function _executeCallsViaSafe(address safe, Call[] storage calls)
+        private
+        returns (bool executed)
+    {
         bytes memory safeData = _encodeMultiSend(calls);
-        bytes memory execData = abi.encodeWithSelector(
-            IMultiSendCallOnly.multiSend.selector,
-            safeData
-        );
+        bytes memory execData =
+            abi.encodeWithSelector(IMultiSendCallOnly.multiSend.selector, safeData);
 
         bytes32 txHash = _getSafeTxHash(safe, execData);
 
@@ -144,18 +145,19 @@ library LibSafe {
     }
 
     function _getSafeTxHash(address safe, bytes memory execData) private view returns (bytes32) {
-        return ISafe(safe).getTransactionHash(
-            Constants.SAFE_MULTISEND_CALL_ONLY,
-            0,
-            execData,
-            1, // DelegateCall
-            0,
-            0,
-            0,
-            address(0),
-            address(0),
-            ISafe(safe).nonce()
-        );
+        return ISafe(safe)
+            .getTransactionHash(
+                Constants.SAFE_MULTISEND_CALL_ONLY,
+                0,
+                execData,
+                1, // DelegateCall
+                0,
+                0,
+                0,
+                address(0),
+                address(0),
+                ISafe(safe).nonce()
+            );
     }
 
     function _approveHashFromOwners(address safe, address[] memory owners, bytes32 txHash) private {
@@ -168,9 +170,12 @@ library LibSafe {
         }
     }
 
-    function _execSafeTransaction(address safe, bytes memory execData, bytes memory signatures, address caller)
-        private
-    {
+    function _execSafeTransaction(
+        address safe,
+        bytes memory execData,
+        bytes memory signatures,
+        address caller
+    ) private {
         if (caller == address(0)) {
             VM.startBroadcast(msg.sender);
         } else {
@@ -200,7 +205,11 @@ library LibSafe {
     }
 
     /// @notice Encode a list of calls into the MultiSendCallOnly transaction format.
-    function _encodeMultiSend(Call[] storage calls) private view returns (bytes memory transactions) {
+    function _encodeMultiSend(Call[] storage calls)
+        private
+        view
+        returns (bytes memory transactions)
+    {
         for (uint256 i = 0; i < calls.length; i++) {
             transactions = abi.encodePacked(
                 transactions,
@@ -233,10 +242,7 @@ library LibSafe {
 
         for (uint256 i = 0; i < approvedCount; i++) {
             signatures = abi.encodePacked(
-                signatures,
-                bytes32(uint256(uint160(approved[i]))),
-                bytes32(0),
-                uint8(1)
+                signatures, bytes32(uint256(uint160(approved[i]))), bytes32(0), uint8(1)
             );
         }
     }

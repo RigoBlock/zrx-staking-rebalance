@@ -45,10 +45,24 @@ contract TreasuryMigrationTest is ZrxFixture {
 
         address treasury = Constants.OLD_ZRX_TREASURY;
 
-        vm.mockCall(treasury, abi.encodeWithSelector(IZrxTreasury.proposalThreshold.selector), abi.encode(uint256(0)));
-        vm.mockCall(treasury, abi.encodeWithSelector(IZrxTreasury.getVotingPower.selector), abi.encode(uint256(1)));
-        vm.mockCall(treasury, abi.encodeWithSelector(IZrxTreasury.propose.selector), abi.encode(uint256(1)));
-        vm.mockCall(treasury, abi.encodeWithSelector(IZrxTreasury.proposalCount.selector), abi.encode(uint256(1)));
+        vm.mockCall(
+            treasury,
+            abi.encodeWithSelector(IZrxTreasury.proposalThreshold.selector),
+            abi.encode(uint256(0))
+        );
+        vm.mockCall(
+            treasury,
+            abi.encodeWithSelector(IZrxTreasury.getVotingPower.selector),
+            abi.encode(uint256(1))
+        );
+        vm.mockCall(
+            treasury, abi.encodeWithSelector(IZrxTreasury.propose.selector), abi.encode(uint256(1))
+        );
+        vm.mockCall(
+            treasury,
+            abi.encodeWithSelector(IZrxTreasury.proposalCount.selector),
+            abi.encode(uint256(1))
+        );
 
         migration.run(TreasuryMode.Propose, proposer, "", 0);
 
@@ -57,7 +71,9 @@ contract TreasuryMigrationTest is ZrxFixture {
 
         IZrxTreasury.ProposedAction[] memory actions = migration.buildActions();
         vm.mockCall(treasury, abi.encodeWithSelector(IZrxTreasury.execute.selector), "");
-        vm.expectCall(treasury, abi.encodeWithSelector(IZrxTreasury.execute.selector, uint256(1), actions));
+        vm.expectCall(
+            treasury, abi.encodeWithSelector(IZrxTreasury.execute.selector, uint256(1), actions)
+        );
         migration.run(TreasuryMode.Execute, proposer, "", 1);
     }
 }

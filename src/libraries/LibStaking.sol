@@ -46,7 +46,8 @@ library LibStaking {
         uint256 count = 0;
         for (uint256 i = 1; i <= lastPoolId_; i++) {
             bytes32 poolId = bytes32(i);
-            IStakingProxy.StoredBalance memory bal = stake.getStakeDelegatedToPoolByOwner(staker, poolId);
+            IStakingProxy.StoredBalance memory bal =
+                stake.getStakeDelegatedToPoolByOwner(staker, poolId);
             uint256 amount = useCurrent ? bal.currentEpochBalance : bal.nextEpochBalance;
             if (amount > 0) {
                 count++;
@@ -58,7 +59,8 @@ library LibStaking {
         uint256 idx = 0;
         for (uint256 i = 1; i <= lastPoolId_; i++) {
             bytes32 poolId = bytes32(i);
-            IStakingProxy.StoredBalance memory bal = stake.getStakeDelegatedToPoolByOwner(staker, poolId);
+            IStakingProxy.StoredBalance memory bal =
+                stake.getStakeDelegatedToPoolByOwner(staker, poolId);
             uint256 amount = useCurrent ? bal.currentEpochBalance : bal.nextEpochBalance;
             if (amount > 0) {
                 delegations[idx] = Delegation({poolId: poolId, amount: amount});
@@ -76,7 +78,8 @@ library LibStaking {
         bool toDelegated = toPool != bytes32(0);
         IStakingProxy.StakeInfo memory from =
             IStakingProxy.StakeInfo(fromDelegated ? DELEGATED : UNDELEGATED, fromPool);
-        IStakingProxy.StakeInfo memory to = IStakingProxy.StakeInfo(toDelegated ? DELEGATED : UNDELEGATED, toPool);
+        IStakingProxy.StakeInfo memory to =
+            IStakingProxy.StakeInfo(toDelegated ? DELEGATED : UNDELEGATED, toPool);
         return abi.encodeWithSelector(IStakingProxy.moveStake.selector, from, to, amount);
     }
 
@@ -125,7 +128,11 @@ library LibStaking {
         }
     }
 
-    function splitEqually(uint256 amount, uint256 count) internal pure returns (uint256[] memory parts) {
+    function splitEqually(uint256 amount, uint256 count)
+        internal
+        pure
+        returns (uint256[] memory parts)
+    {
         require(count > 0, "zero count");
         parts = new uint256[](count);
         uint256 base = amount / count;

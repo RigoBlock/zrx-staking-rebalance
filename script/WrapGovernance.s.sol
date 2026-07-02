@@ -27,9 +27,12 @@ contract WrapGovernance is Script {
     /// @param delegatee wZRX delegatee; pass address(0) to use the default delegatee.
     /// @param excludePoolsCsv Comma-separated pool ids to exclude from wrapping.
     ///                        Empty string uses defaultTargetPools().
-    function run(WrapGovernanceMode mode, address staker, address delegatee, string memory excludePoolsCsv)
-        external
-    {
+    function run(
+        WrapGovernanceMode mode,
+        address staker,
+        address delegatee,
+        string memory excludePoolsCsv
+    ) external {
         if (staker == address(0)) staker = Constants.DEFAULT_STAKER;
         if (delegatee == address(0)) delegatee = Constants.DEFAULT_DELEGATEE;
         require(staker != address(0), "Invalid staker");
@@ -51,7 +54,8 @@ contract WrapGovernance is Script {
 
     function _unstake(address staker) private {
         IStakingProxy staking = IStakingProxy(Constants.STAKING_PROXY);
-        uint256 unstakeAmount = staking.getOwnerStakeByStatus(staker, UNDELEGATED).currentEpochBalance;
+        uint256 unstakeAmount =
+            staking.getOwnerStakeByStatus(staker, UNDELEGATED).currentEpochBalance;
         require(unstakeAmount > 0, "no undelegated stake");
 
         uint256 zrxBefore = IERC20(Constants.ZRX_TOKEN).balanceOf(staker);
@@ -109,7 +113,9 @@ contract WrapGovernance is Script {
             Call({
                 target: Constants.STAKING_PROXY,
                 value: 0,
-                data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, _buildUndelegateCalls(delegations))
+                data: abi.encodeWithSelector(
+                    IStakingProxy.batchExecute.selector, _buildUndelegateCalls(delegations)
+                )
             })
         );
         _calls.push(
@@ -135,7 +141,9 @@ contract WrapGovernance is Script {
         }
     }
 
-    function _wrapExcludePools(address staker, address delegatee, bytes32[] memory excludePoolIds) private {
+    function _wrapExcludePools(address staker, address delegatee, bytes32[] memory excludePoolIds)
+        private
+    {
         (Delegation[] memory delegations, uint256 totalDelegated) =
             LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker);
         require(totalDelegated > 0, "no delegated stake");
@@ -183,7 +191,11 @@ contract WrapGovernance is Script {
         bool executed = LibSafe.executeCalls(staker, _calls);
         if (executed) {
             _verifyWrap(staker, delegatee, wrapAmount, state.wzrxBefore);
-            _verifyActiveDelegation(staker, totalDelegated - wrapAmount, "WrapGovernance: exclude-pools delegation mismatch");
+            _verifyActiveDelegation(
+                staker,
+                totalDelegated - wrapAmount,
+                "WrapGovernance: exclude-pools delegation mismatch"
+            );
         }
     }
 
@@ -234,7 +246,10 @@ contract WrapGovernance is Script {
     ) private view {
         IwZRX wzrx = IwZRX(Constants.WZRX_TOKEN);
         uint256 wzrxAfter = wzrx.balanceOf(staker);
-        require(wzrxAfter - wzrxBefore == expectedIncrease, "WrapGovernance: wZRX balance increase mismatch");
+        require(
+            wzrxAfter - wzrxBefore == expectedIncrease,
+            "WrapGovernance: wZRX balance increase mismatch"
+        );
         require(wzrx.delegates(staker) == expectedDelegatee, "WrapGovernance: delegatee mismatch");
         // ZRX approval should always be reset to 0.
         require(
@@ -243,12 +258,19 @@ contract WrapGovernance is Script {
         );
     }
 
-    function _verifyActiveDelegation(address staker, uint256 expectedTotal, string memory message) private view {
+    function _verifyActiveDelegation(address staker, uint256 expectedTotal, string memory message)
+        private
+        view
+    {
         (, uint256 activeTotal) = LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker);
         require(activeTotal == expectedTotal, message);
     }
 
-    function _buildUndelegateCalls(Delegation[] memory delegations) private pure returns (bytes[] memory calls) {
+    function _buildUndelegateCalls(Delegation[] memory delegations)
+        private
+        pure
+        returns (bytes[] memory calls)
+    {
         calls = new bytes[](delegations.length);
         for (uint256 i = 0; i < delegations.length; i++) {
             calls[i] = LibStaking.encodeUndelegate(delegations[i].poolId, delegations[i].amount);
@@ -289,7 +311,11 @@ contract WrapGovernance is Script {
         }
     }
 
-    function _isExcluded(bytes32 poolId, bytes32[] memory excludePoolIds) private pure returns (bool) {
+    function _isExcluded(bytes32 poolId, bytes32[] memory excludePoolIds)
+        private
+        pure
+        returns (bool)
+    {
         for (uint256 i = 0; i < excludePoolIds.length; i++) {
             if (poolId == excludePoolIds[i]) return true;
         }

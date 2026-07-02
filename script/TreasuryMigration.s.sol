@@ -21,8 +21,15 @@ contract TreasuryMigration is Script {
     /// @param operatedPoolsCsv Comma-separated pool ids used to prove voting power.
     ///                         Empty string uses defaultTargetPools().
     /// @param proposalId Proposal id; only used for execute mode.
-    function run(TreasuryMode mode, address proposer, string memory operatedPoolsCsv, uint256 proposalId) external {
-        if (proposer == address(0)) proposer = Constants.DEFAULT_STAKER;
+    function run(
+        TreasuryMode mode,
+        address proposer,
+        string memory operatedPoolsCsv,
+        uint256 proposalId
+    ) external {
+        if (proposer == address(0)) {
+            proposer = Constants.DEFAULT_STAKER;
+        }
         require(proposer != address(0), "Invalid proposer");
         bytes32[] memory operatedPoolIds = LibStaking.parsePools(operatedPoolsCsv);
 
@@ -55,17 +62,16 @@ contract TreasuryMigration is Script {
                 _persistActions(id, actions);
                 console2.log("Treasury proposal created: %d", id);
             } else {
-                console2.log("Treasury proposal approve phase complete; run execute phase to create");
+                console2.log(
+                    "Treasury proposal approve phase complete; run execute phase to create"
+                );
             }
         } else {
             IZrxTreasury.ProposedAction[] memory actions = _loadActions(proposalId);
             require(actions.length > 0, "no actions loaded for proposal");
 
-            bytes memory executeData = abi.encodeWithSelector(
-                IZrxTreasury.execute.selector,
-                proposalId,
-                actions
-            );
+            bytes memory executeData =
+                abi.encodeWithSelector(IZrxTreasury.execute.selector, proposalId, actions);
 
             delete _calls;
             _calls.push(Call({target: Constants.OLD_ZRX_TREASURY, value: 0, data: executeData}));
@@ -74,7 +80,9 @@ contract TreasuryMigration is Script {
             if (executed) {
                 console2.log("Treasury proposal executed");
             } else {
-                console2.log("Treasury proposal approve phase complete; run execute phase to execute");
+                console2.log(
+                    "Treasury proposal approve phase complete; run execute phase to execute"
+                );
             }
         }
     }
@@ -96,7 +104,9 @@ contract TreasuryMigration is Script {
         if (zrx > 0) {
             actions[idx] = IZrxTreasury.ProposedAction({
                 target: Constants.ZRX_TOKEN,
-                data: abi.encodeWithSelector(IERC20.transfer.selector, Constants.NEW_ZRX_TREASURY, zrx),
+                data: abi.encodeWithSelector(
+                    IERC20.transfer.selector, Constants.NEW_ZRX_TREASURY, zrx
+                ),
                 value: 0
             });
             idx++;
@@ -105,7 +115,9 @@ contract TreasuryMigration is Script {
         if (wCelo > 0) {
             actions[idx] = IZrxTreasury.ProposedAction({
                 target: Constants.WCELO_TOKEN,
-                data: abi.encodeWithSelector(IERC20.transfer.selector, Constants.NEW_ZRX_TREASURY, wCelo),
+                data: abi.encodeWithSelector(
+                    IERC20.transfer.selector, Constants.NEW_ZRX_TREASURY, wCelo
+                ),
                 value: 0
             });
             idx++;
@@ -114,7 +126,9 @@ contract TreasuryMigration is Script {
         if (matic > 0) {
             actions[idx] = IZrxTreasury.ProposedAction({
                 target: Constants.MATIC_TOKEN,
-                data: abi.encodeWithSelector(IERC20.approve.selector, Constants.POLYGON_MIGRATION, matic),
+                data: abi.encodeWithSelector(
+                    IERC20.approve.selector, Constants.POLYGON_MIGRATION, matic
+                ),
                 value: 0
             });
             idx++;
@@ -128,20 +142,31 @@ contract TreasuryMigration is Script {
             uint256 polToTransfer = polBefore + matic;
             actions[idx] = IZrxTreasury.ProposedAction({
                 target: Constants.POL_TOKEN,
-                data: abi.encodeWithSelector(IERC20.transfer.selector, Constants.NEW_ZRX_TREASURY, polToTransfer),
+                data: abi.encodeWithSelector(
+                    IERC20.transfer.selector, Constants.NEW_ZRX_TREASURY, polToTransfer
+                ),
                 value: 0
             });
             idx++;
         }
     }
 
-    function _persistActions(uint256 proposalId, IZrxTreasury.ProposedAction[] memory actions) private {
+    // forge-lint: disable-next-item(unsafe-cheatcode)
+    // Intentional filesystem write: the exact ProposedAction[] used at propose
+    // time must be replayed verbatim at execute time to avoid the actions-hash
+    // mismatch bug. Scope is restricted by foundry.toml fs_permissions.
+    function _persistActions(uint256 proposalId, IZrxTreasury.ProposedAction[] memory actions)
+        private
+    {
         bytes memory data = abi.encode(proposalId, actions);
         string memory path = _proposalFilePath(proposalId);
         vm.writeFile(path, vm.toString(data));
         console2.log("Proposal actions persisted to: %s", path);
     }
 
+    // forge-lint: disable-next-item(unsafe-cheatcode)
+    // Reads the actions persisted by the propose step (see _persistActions).
+    // Scope is restricted by foundry.toml fs_permissions.
     function _loadActions(uint256 proposalId)
         private
         view

@@ -6,6 +6,9 @@
   "scripts": {
     "build": "forge build",
     "lint": "forge lint",
+    "lint:contracts": "forge lint src/",
+    "fmt": "forge fmt",
+    "fmt:check": "forge fmt --check",
     "test:foundry": "forge test",
     "op": "./sh/op.sh",
     "op:stake-delegate": "./sh/stake-and-delegate.sh --broadcast",

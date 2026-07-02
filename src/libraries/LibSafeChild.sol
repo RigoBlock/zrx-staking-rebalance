@@ -56,6 +56,7 @@ library LibSafeChild {
         0xbb8310d4860db7303ce6f8cd20104e744dfa5135f2060d0e264a8f2b302c5b48;
     bytes32 private constant DOMAIN_SEPARATOR_TYPEHASH =
         0x47e79534a245952e8b16893a336b85a3d9ea9fa8c573f3d803afb92a79469218;
+
     function childSafeSaltNonce(address masterSafe, address delegatee)
         internal
         pure
@@ -91,17 +92,20 @@ library LibSafeChild {
         ISafeProxyFactory factory = ISafeProxyFactory(Constants.SAFE_PROXY_FACTORY);
         bytes memory proxyCreationCode = factory.proxyCreationCode();
 
-        bytes memory initCode = abi.encodePacked(proxyCreationCode, abi.encode(Constants.SAFE_SINGLETON));
+        bytes memory initCode =
+            abi.encodePacked(proxyCreationCode, abi.encode(Constants.SAFE_SINGLETON));
+
+        // forge-lint: disable-start(asm-keccak256)
+        // Intentionally not hand-rolled: this is the CREATE2 address prediction for
+        // the child Safe. A memory-layout bug in inline assembly would send wZRX to
+        // an uncontrolled address, so we keep the explicit abi.encodePacked form.
         bytes32 salt = keccak256(abi.encodePacked(keccak256(initializer), saltNonce));
 
         bytes32 hash = keccak256(
-            abi.encodePacked(
-                bytes1(0xff),
-                Constants.SAFE_PROXY_FACTORY,
-                salt,
-                keccak256(initCode)
-            )
+            abi.encodePacked(bytes1(0xff), Constants.SAFE_PROXY_FACTORY, salt, keccak256(initCode))
         );
+        // forge-lint: disable-end(asm-keccak256)
+
         return address(uint160(uint256(hash)));
     }
 
@@ -126,9 +130,13 @@ library LibSafeChild {
         uint256 currentNonce = childSafe.code.length > 0 ? ISafe(childSafe).nonce() : 0;
         bytes memory delegateData = abi.encodeWithSelector(IwZRX.delegate.selector, delegatee);
 
-        bytes32 domainSeparator = keccak256(
-            abi.encode(DOMAIN_SEPARATOR_TYPEHASH, block.chainid, childSafe)
-        );
+        // forge-lint: disable-start(asm-keccak256)
+        // Intentionally not hand-rolled: this is the EIP-712 hash of the child Safe
+        // delegate transaction. A bug in inline-assembly hashing would produce an
+        // approved-hash signature that execTransaction rejects, so we keep the
+        // explicit abi.encode form.
+        bytes32 domainSeparator =
+            keccak256(abi.encode(DOMAIN_SEPARATOR_TYPEHASH, block.chainid, childSafe));
         bytes32 structHash = keccak256(
             abi.encode(
                 SAFE_TX_TYPEHASH,
@@ -146,6 +154,7 @@ library LibSafeChild {
         );
 
         return keccak256(abi.encodePacked(bytes1(0x19), bytes1(0x01), domainSeparator, structHash));
+        // forge-lint: disable-end(asm-keccak256)
     }
 
     function approveDelegateHashCalldata(address childSafe, address delegatee)
@@ -154,8 +163,7 @@ library LibSafeChild {
         returns (bytes memory)
     {
         return abi.encodeWithSelector(
-            ISafe.approveHash.selector,
-            childSafeDelegateTxHash(childSafe, delegatee)
+            ISafe.approveHash.selector, childSafeDelegateTxHash(childSafe, delegatee)
         );
     }
 
@@ -163,11 +171,12 @@ library LibSafeChild {
         internal
         returns (address childSafe)
     {
-        childSafe = ISafeProxyFactory(Constants.SAFE_PROXY_FACTORY).createProxyWithNonce(
-            Constants.SAFE_SINGLETON,
-            childSafeInitializer(masterSafe),
-            childSafeSaltNonce(masterSafe, delegatee)
-        );
+        childSafe = ISafeProxyFactory(Constants.SAFE_PROXY_FACTORY)
+            .createProxyWithNonce(
+                Constants.SAFE_SINGLETON,
+                childSafeInitializer(masterSafe),
+                childSafeSaltNonce(masterSafe, delegatee)
+            );
         require(childSafe != address(0), "Safe child deployment failed");
         require(childSafe.code.length > 0, "Safe child has no code");
     }
@@ -180,7 +189,12 @@ library LibSafeChild {
         require(success, "Safe child delegate execution failed");
     }
 
-    function execDelegateCalldata(address /* childSafe */, address delegatee, address masterSafe)
+    function execDelegateCalldata(
+        address,
+        /* childSafe */
+        address delegatee,
+        address masterSafe
+    )
         internal
         pure
         returns (bytes memory)
@@ -188,11 +202,8 @@ library LibSafeChild {
         bytes memory delegateData = abi.encodeWithSelector(IwZRX.delegate.selector, delegatee);
 
         // Signature for an approved hash: r = owner (masterSafe), s = 0, v = 1.
-        bytes memory signatures = abi.encodePacked(
-            bytes32(uint256(uint160(masterSafe))),
-            bytes32(0),
-            uint8(1)
-        );
+        bytes memory signatures =
+            abi.encodePacked(bytes32(uint256(uint160(masterSafe))), bytes32(0), uint8(1));
 
         return abi.encodeWithSelector(
             ISafe.execTransaction.selector,

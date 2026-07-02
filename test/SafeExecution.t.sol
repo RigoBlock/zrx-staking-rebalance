@@ -74,10 +74,8 @@ contract SafeExecutionTest is ZrxFixture {
             0,
             payable(address(0))
         );
-        safe = ISafeProxyFactory(Constants.SAFE_PROXY_FACTORY).createProxyWithNonce(
-            Constants.SAFE_SINGLETON, initializer, 0
-        );
-
+        safe = ISafeProxyFactory(Constants.SAFE_PROXY_FACTORY)
+            .createProxyWithNonce(Constants.SAFE_SINGLETON, initializer, 0);
     }
 
     function testSafeStakeAndDelegate() public {
@@ -91,10 +89,10 @@ contract SafeExecutionTest is ZrxFixture {
         uint256 zrxBefore = IERC20(Constants.ZRX_TOKEN).balanceOf(safe);
         stakeAndDelegate.run(safe, 100 ether, 100 ether, _poolsToCsv(pools));
 
-        IStakingProxy.StoredBalance memory bal31 =
-            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
-        IStakingProxy.StoredBalance memory bal48 =
-            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_48);
+        IStakingProxy.StoredBalance memory bal31 = IStakingProxy(Constants.STAKING_PROXY)
+            .getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
+        IStakingProxy.StoredBalance memory bal48 = IStakingProxy(Constants.STAKING_PROXY)
+            .getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_48);
 
         assertEq(bal31.nextEpochBalance, 50 ether, "pool 31 delegation");
         assertEq(bal48.nextEpochBalance, 50 ether, "pool 48 delegation");
@@ -112,14 +110,18 @@ contract SafeExecutionTest is ZrxFixture {
 
         redelegate.run(RedelegateMode.RedelegateAll, safe, 0, _poolsToCsv(targetPools));
 
-        IStakingProxy.StoredBalance memory bal31 =
-            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
-        IStakingProxy.StoredBalance memory bal48 =
-            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_48);
-        IStakingProxy.StoredBalance memory bal34 =
-            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_34);
+        IStakingProxy.StoredBalance memory bal31 = IStakingProxy(Constants.STAKING_PROXY)
+            .getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
+        IStakingProxy.StoredBalance memory bal48 = IStakingProxy(Constants.STAKING_PROXY)
+            .getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_48);
+        IStakingProxy.StoredBalance memory bal34 = IStakingProxy(Constants.STAKING_PROXY)
+            .getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_34);
 
-        assertEq(bal31.nextEpochBalance + bal48.nextEpochBalance + bal34.nextEpochBalance, 500 ether, "total");
+        assertEq(
+            bal31.nextEpochBalance + bal48.nextEpochBalance + bal34.nextEpochBalance,
+            500 ether,
+            "total"
+        );
         assertGt(bal31.nextEpochBalance, 0, "pool 31");
         assertGt(bal48.nextEpochBalance, 0, "pool 48");
         assertGt(bal34.nextEpochBalance, 0, "pool 34");
@@ -149,8 +151,8 @@ contract SafeExecutionTest is ZrxFixture {
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(safe), 500 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(safe), delegatee, "delegatee");
 
-        IStakingProxy.StoredBalance memory bal31 =
-            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
+        IStakingProxy.StoredBalance memory bal31 = IStakingProxy(Constants.STAKING_PROXY)
+            .getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
         assertEq(bal31.currentEpochBalance, 0, "stake undelegated");
     }
 
@@ -172,10 +174,10 @@ contract SafeExecutionTest is ZrxFixture {
         assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(safe), 250 ether, "wZRX balance");
         assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(safe), delegatee, "delegatee");
 
-        IStakingProxy.StoredBalance memory bal31 =
-            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
-        IStakingProxy.StoredBalance memory bal48 =
-            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_48);
+        IStakingProxy.StoredBalance memory bal31 = IStakingProxy(Constants.STAKING_PROXY)
+            .getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
+        IStakingProxy.StoredBalance memory bal48 = IStakingProxy(Constants.STAKING_PROXY)
+            .getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_48);
         assertEq(bal31.currentEpochBalance, 250 ether, "excluded pool still delegated");
         assertEq(bal48.currentEpochBalance, 0, "source pool undelegated");
     }
@@ -191,8 +193,8 @@ contract SafeExecutionTest is ZrxFixture {
 
         redelegate.run(RedelegateMode.UndelegateAll, safe, 0, "");
 
-        IStakingProxy.StoredBalance memory bal31 =
-            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
+        IStakingProxy.StoredBalance memory bal31 = IStakingProxy(Constants.STAKING_PROXY)
+            .getStakeDelegatedToPoolByOwner(safe, Constants.TARGET_POOL_31);
         assertEq(bal31.nextEpochBalance, 0, "pool 31 undelegated");
     }
 
@@ -212,7 +214,8 @@ contract SafeExecutionTest is ZrxFixture {
         uint256 total = 0;
         for (uint256 i = 0; i < targetPools.length; i++) {
             total += IStakingProxy(Constants.STAKING_PROXY)
-                .getStakeDelegatedToPoolByOwner(safe, targetPools[i]).nextEpochBalance;
+            .getStakeDelegatedToPoolByOwner(safe, targetPools[i])
+            .nextEpochBalance;
         }
         assertEq(total, 800 ether, "total target stake");
     }
@@ -231,7 +234,8 @@ contract SafeExecutionTest is ZrxFixture {
         uint256 total = 0;
         for (uint256 i = 0; i < targetPools.length; i++) {
             total += IStakingProxy(Constants.STAKING_PROXY)
-                .getStakeDelegatedToPoolByOwner(safe, targetPools[i]).nextEpochBalance;
+            .getStakeDelegatedToPoolByOwner(safe, targetPools[i])
+            .nextEpochBalance;
         }
         assertEq(total, 500 ether, "total target stake");
     }
@@ -249,7 +253,11 @@ contract SafeExecutionTest is ZrxFixture {
 
         wrapGovernance.run(WrapGovernanceMode.Unstake, safe, delegatee, "");
 
-        assertEq(IERC20(Constants.ZRX_TOKEN).balanceOf(safe) - zrxBefore, 500 ether, "ZRX balance increased");
+        assertEq(
+            IERC20(Constants.ZRX_TOKEN).balanceOf(safe) - zrxBefore,
+            500 ether,
+            "ZRX balance increased"
+        );
     }
 
     function testSafeWrapMultiDelegate() public {
@@ -269,12 +277,20 @@ contract SafeExecutionTest is ZrxFixture {
         wrapMultiDelegate.run(safe, delegatees, amounts);
 
         assertEq(IERC20(Constants.ZRX_TOKEN).balanceOf(safe), 700 ether, "ZRX balance");
-        assertEq(IERC20(Constants.ZRX_TOKEN).allowance(safe, Constants.WZRX_TOKEN), 0, "allowance reset");
+        assertEq(
+            IERC20(Constants.ZRX_TOKEN).allowance(safe, Constants.WZRX_TOKEN), 0, "allowance reset"
+        );
 
         for (uint256 i = 0; i < delegatees.length; i++) {
             address childSafe = LibSafeChild.predictChildSafeAddress(safe, delegatees[i]);
-            assertEq(IwZRX(Constants.WZRX_TOKEN).balanceOf(childSafe), amounts[i], "child Safe balance");
-            assertEq(IwZRX(Constants.WZRX_TOKEN).delegates(childSafe), delegatees[i], "child Safe delegatee");
+            assertEq(
+                IwZRX(Constants.WZRX_TOKEN).balanceOf(childSafe), amounts[i], "child Safe balance"
+            );
+            assertEq(
+                IwZRX(Constants.WZRX_TOKEN).delegates(childSafe),
+                delegatees[i],
+                "child Safe delegatee"
+            );
         }
     }
 }

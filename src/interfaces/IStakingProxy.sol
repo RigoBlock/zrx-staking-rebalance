@@ -19,7 +19,10 @@ interface IStakingProxy {
     function batchExecute(bytes[] calldata data) external;
     function endEpoch() external returns (uint256);
 
-    function getOwnerStakeByStatus(address staker, uint8 status) external view returns (StoredBalance memory);
+    function getOwnerStakeByStatus(address staker, uint8 status)
+        external
+        view
+        returns (StoredBalance memory);
     function getStakeDelegatedToPoolByOwner(address staker, bytes32 poolId)
         external
         view

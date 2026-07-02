@@ -23,7 +23,9 @@ contract Redelegate is Script {
     ///                     Pass 0 to target the current total delegated balance.
     ///                     Ignored for undelegate-all and redelegate-all.
     /// @param poolsCsv Comma-separated target pool ids. Empty string uses defaultTargetPools().
-    function run(RedelegateMode mode, address staker, uint256 targetAmount, string memory poolsCsv) external {
+    function run(RedelegateMode mode, address staker, uint256 targetAmount, string memory poolsCsv)
+        external
+    {
         if (staker == address(0)) staker = Constants.DEFAULT_STAKER;
         require(staker != address(0), "Invalid staker");
         bytes32[] memory targetPoolIds = LibStaking.parsePools(poolsCsv);
@@ -87,8 +89,10 @@ contract Redelegate is Script {
         if (mode == RedelegateMode.UndelegateAll) {
             // Every previously active delegation must be scheduled for removal.
             for (uint256 i = 0; i < beforeDelegations.length; i++) {
-                uint256 next_ = IStakingProxy(Constants.STAKING_PROXY)
-                    .getStakeDelegatedToPoolByOwner(staker, beforeDelegations[i].poolId).nextEpochBalance;
+                uint256 next_ =
+                    IStakingProxy(Constants.STAKING_PROXY)
+                .getStakeDelegatedToPoolByOwner(staker, beforeDelegations[i].poolId)
+                .nextEpochBalance;
                 require(next_ == 0, "Redelegate: undelegate-all left scheduled stake");
             }
             return;
@@ -99,7 +103,9 @@ contract Redelegate is Script {
         for (uint256 i = 1; i <= lastPoolId_; i++) {
             bytes32 poolId = bytes32(i);
             uint256 next_ =
-                IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, poolId).nextEpochBalance;
+                IStakingProxy(Constants.STAKING_PROXY)
+            .getStakeDelegatedToPoolByOwner(staker, poolId)
+            .nextEpochBalance;
             if (next_ > 0 && !_isTarget(poolId, targetPoolIds)) {
                 revert("Redelegate: non-target pool has scheduled stake");
             }
@@ -110,8 +116,10 @@ contract Redelegate is Script {
             uint256[] memory parts = LibStaking.splitEqually(expectedTotal, targetPoolIds.length);
             uint256 scheduledTotal = 0;
             for (uint256 i = 0; i < targetPoolIds.length; i++) {
-                uint256 next_ = IStakingProxy(Constants.STAKING_PROXY)
-                    .getStakeDelegatedToPoolByOwner(staker, targetPoolIds[i]).nextEpochBalance;
+                uint256 next_ =
+                    IStakingProxy(Constants.STAKING_PROXY)
+                .getStakeDelegatedToPoolByOwner(staker, targetPoolIds[i])
+                .nextEpochBalance;
                 require(next_ == parts[i], "Redelegate: redelegate-all pool amount mismatch");
                 scheduledTotal += next_;
             }
@@ -122,13 +130,18 @@ contract Redelegate is Script {
             uint256 scheduledTotal = 0;
             for (uint256 i = 0; i < targetPoolIds.length; i++) {
                 scheduledTotal += IStakingProxy(Constants.STAKING_PROXY)
-                    .getStakeDelegatedToPoolByOwner(staker, targetPoolIds[i]).nextEpochBalance;
+                .getStakeDelegatedToPoolByOwner(staker, targetPoolIds[i])
+                .nextEpochBalance;
             }
             require(scheduledTotal == expectedTotal, "Redelegate: redelegate-amount total mismatch");
         }
     }
 
-    function _buildUndelegateCalls(Delegation[] memory delegations) private pure returns (bytes[] memory calls) {
+    function _buildUndelegateCalls(Delegation[] memory delegations)
+        private
+        pure
+        returns (bytes[] memory calls)
+    {
         calls = new bytes[](delegations.length);
         for (uint256 i = 0; i < delegations.length; i++) {
             calls[i] = LibStaking.encodeUndelegate(delegations[i].poolId, delegations[i].amount);
@@ -198,7 +211,8 @@ contract Redelegate is Script {
                 calls[i] = LibStaking.encodeUndelegate(sources[i].poolId, sourceAmounts[i]);
             }
             for (uint256 i = 0; i < targetPoolIds.length; i++) {
-                calls[sourceCount + i] = LibStaking.encodeDelegate(targetPoolIds[i], targetAmounts[i]);
+                calls[sourceCount + i] =
+                    LibStaking.encodeDelegate(targetPoolIds[i], targetAmounts[i]);
             }
         } else {
             uint256 excess = currentTarget - targetAmount;
