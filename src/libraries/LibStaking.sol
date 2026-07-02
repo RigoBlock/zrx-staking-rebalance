@@ -10,33 +10,41 @@ library LibStaking {
     uint8 internal constant UNDELEGATED = 0;
     uint8 internal constant DELEGATED = 1;
 
+    // Safety guard: if the staking contract ever grows beyond this many pools,
+    // the script aborts rather than silently burning gas on a huge enumeration.
+    // Raise this constant if the 0x staking system legitimately adds more pools.
+    uint256 internal constant MAX_POOL_ID = 100;
+
     Vm private constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
-    function getActiveDelegations(address stakingProxy, address staker, uint256 maxPoolId)
+    function getActiveDelegations(address stakingProxy, address staker)
         internal
         view
         returns (Delegation[] memory delegations, uint256 total)
     {
-        return _getDelegations(stakingProxy, staker, maxPoolId, true);
+        return _getDelegations(stakingProxy, staker, true);
     }
 
-    function getScheduledDelegations(address stakingProxy, address staker, uint256 maxPoolId)
+    function getScheduledDelegations(address stakingProxy, address staker)
         internal
         view
         returns (Delegation[] memory delegations, uint256 total)
     {
-        return _getDelegations(stakingProxy, staker, maxPoolId, false);
+        return _getDelegations(stakingProxy, staker, false);
     }
 
-    function _getDelegations(address stakingProxy, address staker, uint256 maxPoolId, bool useCurrent)
+    function _getDelegations(address stakingProxy, address staker, bool useCurrent)
         private
         view
         returns (Delegation[] memory delegations, uint256 total)
     {
         IStakingProxy stake = IStakingProxy(stakingProxy);
+        uint256 lastPoolId_ = uint256(stake.lastPoolId());
+        require(lastPoolId_ <= MAX_POOL_ID, "LibStaking: too many pools; raise MAX_POOL_ID");
+
         // First count non-zero delegations.
         uint256 count = 0;
-        for (uint256 i = 1; i <= maxPoolId; i++) {
+        for (uint256 i = 1; i <= lastPoolId_; i++) {
             bytes32 poolId = bytes32(i);
             IStakingProxy.StoredBalance memory bal = stake.getStakeDelegatedToPoolByOwner(staker, poolId);
             uint256 amount = useCurrent ? bal.currentEpochBalance : bal.nextEpochBalance;
@@ -48,7 +56,7 @@ library LibStaking {
 
         delegations = new Delegation[](count);
         uint256 idx = 0;
-        for (uint256 i = 1; i <= maxPoolId; i++) {
+        for (uint256 i = 1; i <= lastPoolId_; i++) {
             bytes32 poolId = bytes32(i);
             IStakingProxy.StoredBalance memory bal = stake.getStakeDelegatedToPoolByOwner(staker, poolId);
             uint256 amount = useCurrent ? bal.currentEpochBalance : bal.nextEpochBalance;

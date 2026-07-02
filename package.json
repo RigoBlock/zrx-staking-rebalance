@@ -26,6 +26,8 @@
     "op:sim:wrap:exclude-pools": "./sh/wrap-governance.sh exclude-pools",
     "op:unstake": "./sh/wrap-governance.sh --broadcast unstake",
     "op:sim:unstake": "./sh/wrap-governance.sh unstake",
+    "op:wrap:multi-delegate": "./sh/wrap-governance-multi-delegate.sh --broadcast",
+    "op:sim:wrap:multi-delegate": "./sh/wrap-governance-multi-delegate.sh",
     "op:treasury:propose": "./sh/treasury.sh --broadcast propose",
     "op:sim:treasury:propose": "./sh/treasury.sh propose",
     "op:treasury:execute": "./sh/treasury.sh --broadcast execute",

@@ -15,7 +15,6 @@ import {WrapGovernanceMode, Delegation, WrapState, Call} from "../src/types/Type
  * @notice Wraps ZRX into the wZRX governance token and delegates voting power.
  */
 contract WrapGovernance is Script {
-    uint256 internal constant MAX_POOL_ID = 100;
     uint8 internal constant UNDELEGATED = 0;
 
     // Storage array lets the script build the operation in a flat, readable way
@@ -33,6 +32,8 @@ contract WrapGovernance is Script {
     {
         if (staker == address(0)) staker = Constants.DEFAULT_STAKER;
         if (delegatee == address(0)) delegatee = Constants.DEFAULT_DELEGATEE;
+        require(staker != address(0), "Invalid staker");
+        require(delegatee != address(0), "Invalid delegatee");
         bytes32[] memory excludePoolIds = LibStaking.parsePools(excludePoolsCsv);
 
         if (mode == WrapGovernanceMode.Unstake) {
@@ -95,7 +96,7 @@ contract WrapGovernance is Script {
 
     function _wrapFull(address staker, address delegatee) private {
         (Delegation[] memory delegations, uint256 totalDelegated) =
-            LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
+            LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker);
         require(delegations.length > 0, "no delegated stake");
         require(totalDelegated > 0, "no delegated stake");
 
@@ -136,7 +137,7 @@ contract WrapGovernance is Script {
 
     function _wrapExcludePools(address staker, address delegatee, bytes32[] memory excludePoolIds) private {
         (Delegation[] memory delegations, uint256 totalDelegated) =
-            LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
+            LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker);
         require(totalDelegated > 0, "no delegated stake");
 
         uint256 excludedTotal = 0;
@@ -243,7 +244,7 @@ contract WrapGovernance is Script {
     }
 
     function _verifyActiveDelegation(address staker, uint256 expectedTotal, string memory message) private view {
-        (, uint256 activeTotal) = LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
+        (, uint256 activeTotal) = LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker);
         require(activeTotal == expectedTotal, message);
     }
 

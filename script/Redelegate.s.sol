@@ -13,8 +13,6 @@ import {RedelegateMode, Delegation, Call} from "../src/types/Types.sol";
  * @notice Rebalances or removes existing ZRX delegations across the 0x staking proxy.
  */
 contract Redelegate is Script {
-    uint256 internal constant MAX_POOL_ID = 100;
-
     // Storage array for the single batched operation, keeping the script flat.
     Call[] internal _calls;
 
@@ -27,6 +25,7 @@ contract Redelegate is Script {
     /// @param poolsCsv Comma-separated target pool ids. Empty string uses defaultTargetPools().
     function run(RedelegateMode mode, address staker, uint256 targetAmount, string memory poolsCsv) external {
         if (staker == address(0)) staker = Constants.DEFAULT_STAKER;
+        require(staker != address(0), "Invalid staker");
         bytes32[] memory targetPoolIds = LibStaking.parsePools(poolsCsv);
 
         bytes[] memory calls = _buildCalls(mode, staker, targetAmount, targetPoolIds);
@@ -35,7 +34,7 @@ contract Redelegate is Script {
         }
 
         (Delegation[] memory delegations, uint256 totalDelegated) =
-            LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
+            LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker);
 
         // Wrap the batched staking calls in a single operation. If `staker` is a
         // Safe this is executed through `execTransaction`.
@@ -61,7 +60,7 @@ contract Redelegate is Script {
         bytes32[] memory targetPoolIds
     ) private view returns (bytes[] memory calls) {
         (Delegation[] memory delegations, uint256 totalDelegated) =
-            LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
+            LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker);
 
         require(totalDelegated > 0, "no delegated stake");
 
@@ -96,7 +95,8 @@ contract Redelegate is Script {
         }
 
         // For redelegate modes, no stake may remain scheduled outside the target pools.
-        for (uint256 i = 1; i <= MAX_POOL_ID; i++) {
+        uint256 lastPoolId_ = uint256(IStakingProxy(Constants.STAKING_PROXY).lastPoolId());
+        for (uint256 i = 1; i <= lastPoolId_; i++) {
             bytes32 poolId = bytes32(i);
             uint256 next_ =
                 IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, poolId).nextEpochBalance;

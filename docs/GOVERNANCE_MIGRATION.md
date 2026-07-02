@@ -60,12 +60,37 @@ The script undelegates from every pool except the excluded ones, advances the
 epoch, calls `endEpoch()`, unstakes the requested amount, then wraps and
 delegates it.
 
-## 4. Old treasury migration
+## 4. Multi-delegate wrap (`wrap multi-delegate`)
+
+To split liquid ZRX across several delegatees, each in its own 1-of-1 child Safe:
+
+```bash
+DELEGATEES=0x...,0x...,0x... AMOUNTS=100000,100000,100000 yarn op:wrap:multi-delegate
+```
+
+The script:
+
+1. Approves the wZRX contract to spend the total ZRX.
+2. For each delegatee, deploys a child Safe (if needed) owned solely by the
+   master Safe, deposits the allocated ZRX into wZRX for that child Safe,
+   approves the delegate transaction hash on the child Safe, and executes the
+   delegate transaction.
+3. Resets the ZRX approval.
+
+When the master Safe is the staker, the entire sequence is submitted as one
+batched `execTransaction` so every inner call originates from the master Safe.
+
+## 5. Old treasury migration
 
 The old 0x treasury at `0x0bb1810061c2f5b2088054ee184e6c79e1591101` holds
-assets that can only be moved through passed governance proposals. To migrate
-them to the new governance treasury (`ZeroExTreasuryGovernor` at
-`0x4822cfc1e7699bdb9551bdfd3a838ee414bc2008`), first propose:
+assets that can only be moved through passed governance proposals. This step is
+**not** executed by 0x Labs; it is proposed and voted on by a **voting
+delegate** — an address that holds delegated voting power (staked ZRX or wZRX)
+in the old 0x treasury governance system.
+
+To migrate the assets to the new governance treasury (`ZeroExTreasuryGovernor`
+at `0x4822cfc1e7699bdb9551bdfd3a838ee414bc2008`), the voting delegate first
+proposes:
 
 ```bash
 yarn op:treasury propose <proposer> [<operated-pool>...]
@@ -84,8 +109,36 @@ After the proposal passes and reaches its execution epoch, run:
 yarn op:treasury execute <proposer> <proposalId>
 ```
 
-The proposer must have at least `proposalThreshold` voting power in the old
-treasury. Pass any operated pools when proposing.
+The voting delegate acting as proposer must have at least `proposalThreshold`
+voting power in the old treasury. Pass any operated pools when proposing.
+
+## Safe multisig workflow
+
+If the staker or proposer above is a Safe multisig, every state-changing script
+must be run twice:
+
+1. `SAFE_MODE=approve` — each Safe owner runs the script once to broadcast
+   `safe.approveHash(txHash)` from their own signer wallet.
+2. `SAFE_MODE=execute` (default) — once enough owners have approved, anyone can
+   run the script to assemble the approved-hash signatures and execute the
+   batched transaction through the Safe.
+
+For example, with a 2-of-2 Safe:
+
+```bash
+# Owner 1
+SAFE_MODE=approve LEDGER=1 yarn op:treasury:propose
+
+# Owner 2
+SAFE_MODE=approve LEDGER=1 yarn op:treasury:propose
+
+# Anyone, after both approvals are on-chain
+LEDGER=1 yarn op:treasury:propose
+```
+
+The same pattern applies to staking, redelegation, wrapping, and treasury
+operations. During the approve phase the script logs that the execute phase is
+still pending and does not claim the operation is complete.
 
 ## Contracts
 

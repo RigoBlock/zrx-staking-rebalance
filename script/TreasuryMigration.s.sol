@@ -23,6 +23,7 @@ contract TreasuryMigration is Script {
     /// @param proposalId Proposal id; only used for execute mode.
     function run(TreasuryMode mode, address proposer, string memory operatedPoolsCsv, uint256 proposalId) external {
         if (proposer == address(0)) proposer = Constants.DEFAULT_STAKER;
+        require(proposer != address(0), "Invalid proposer");
         bytes32[] memory operatedPoolIds = LibStaking.parsePools(operatedPoolsCsv);
 
         if (mode == TreasuryMode.Propose) {
@@ -46,13 +47,16 @@ contract TreasuryMigration is Script {
 
             delete _calls;
             _calls.push(Call({target: Constants.OLD_ZRX_TREASURY, value: 0, data: proposeData}));
-            LibSafe.executeCalls(proposer, _calls);
+            bool executed = LibSafe.executeCalls(proposer, _calls);
 
-            // Proposal id is not returned from the Safe execTransaction call above, so re-read it.
-            uint256 id = IZrxTreasury(Constants.OLD_ZRX_TREASURY).proposalCount();
-            _persistActions(id, actions);
-
-            console2.log("Treasury proposal created: %d", id);
+            if (executed) {
+                // Proposal id is not returned from the Safe execTransaction call above, so re-read it.
+                uint256 id = IZrxTreasury(Constants.OLD_ZRX_TREASURY).proposalCount();
+                _persistActions(id, actions);
+                console2.log("Treasury proposal created: %d", id);
+            } else {
+                console2.log("Treasury proposal approve phase complete; run execute phase to create");
+            }
         } else {
             IZrxTreasury.ProposedAction[] memory actions = _loadActions(proposalId);
             require(actions.length > 0, "no actions loaded for proposal");
@@ -65,9 +69,13 @@ contract TreasuryMigration is Script {
 
             delete _calls;
             _calls.push(Call({target: Constants.OLD_ZRX_TREASURY, value: 0, data: executeData}));
-            LibSafe.executeCalls(proposer, _calls);
+            bool executed = LibSafe.executeCalls(proposer, _calls);
 
-            console2.log("Treasury proposal executed");
+            if (executed) {
+                console2.log("Treasury proposal executed");
+            } else {
+                console2.log("Treasury proposal approve phase complete; run execute phase to execute");
+            }
         }
     }
 

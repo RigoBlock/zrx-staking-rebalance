@@ -24,6 +24,7 @@ sh/                       # Bash wrappers and the interactive runner
   delegate-equal.sh
   redelegate.sh
   wrap-governance.sh
+  wrap-governance-multi-delegate.sh
   treasury.sh
 src/
   interfaces/             # Minimal Solidity contract interfaces
@@ -80,6 +81,14 @@ All on-chain addresses live in `src/constants/Constants.sol`.
   the new 0x Labs deployment Safe (taken from 0x Settler's mainnet
   `chain_config.json`).
 
+The actors are intentionally separate:
+
+- **Staking reallocation** (`stake-delegate`, `redelegate`, `wrap`) is executed
+  by 0x Labs from their EOA or Safe wallets.
+- **Treasury migration** is proposed and executed by a **voting delegate** — an
+  address that holds delegated voting power (staked ZRX or wZRX) in the old 0x
+  treasury governance system, not by 0x Labs directly.
+
 ## Run an operation
 
 ### Interactive runner (recommended)
@@ -125,9 +134,10 @@ yarn op:sim:redelegate          # undelegate all and redelegate to target pools
 yarn op:sim:rebalance           # rebalance target pools to current total
 yarn op:sim:wrap:liquid         # wrap all liquid ZRX
 yarn op:sim:wrap:full           # wrap all active delegated stake
-yarn op:sim:wrap:exclude-pools  # wrap all stake outside the target pools
-yarn op:sim:unstake             # unstake all undelegated ZRX
-yarn op:sim:treasury:propose    # propose treasury migration
+yarn op:sim:wrap:exclude-pools       # wrap all stake outside the target pools
+yarn op:sim:wrap:multi-delegate      # split liquid ZRX across child Safe delegates
+yarn op:sim:unstake                  # unstake all undelegated ZRX
+yarn op:sim:treasury:propose         # propose treasury migration
 ```
 
 Optional positional arguments:
@@ -141,6 +151,9 @@ yarn op:delegate-equal 1000000
 
 # Rebalance so the target pools total exactly 2,000,000 ZRX
 yarn op:rebalance 2000000
+
+# Split 300k ZRX across three child Safe delegates
+DELEGATEES=0x...,0x...,0x... AMOUNTS=100000,100000,100000 yarn op:wrap:multi-delegate
 
 # Execute the treasury proposal after it has passed
 yarn op:treasury:execute <proposalId>
@@ -160,6 +173,7 @@ LEDGER=1 ./sh/wrap-governance.sh --broadcast full
 # Simulate (no signer required beyond the --from address)
 ./sh/redelegate.sh redelegate-all
 ./sh/wrap-governance.sh liquid
+DELEGATEES=0x...,0x... AMOUNTS=100000,200000 ./sh/wrap-governance-multi-delegate.sh
 ```
 
 ## Hardware wallets
@@ -172,6 +186,37 @@ TREZOR=1 yarn op:wrap:liquid
 ```
 
 Always simulate first with `yarn op:sim:*` (no `--broadcast`).
+
+## Safe multisig operations
+
+When the staker/proposer is a Safe, the scripts cannot sign "as" the Safe
+contract. Instead, `LibSafe` drives the real Safe through the canonical
+`MultiSendCallOnly` contract using the approved-hash flow.
+
+For a Safe with threshold `N`, each operation that changes on-chain state must
+be run in two phases:
+
+1. **Approve phase** — each Safe owner runs the script once with
+   `SAFE_MODE=approve`. This broadcasts `safe.approveHash(txHash)` from the
+   owner's own signer wallet. No state change occurs yet.
+
+   ```bash
+   SAFE_MODE=approve LEDGER=1 yarn op:stake-delegate 1000000
+   ```
+
+2. **Execute phase** — once at least `N` owners have approved on-chain, anyone
+   can run the script again (default `SAFE_MODE=execute`) to assemble the
+   approved-hash signatures and broadcast `safe.execTransaction(...)`, which
+   delegatecalls `MultiSendCallOnly` to execute the batched calls.
+
+   ```bash
+   LEDGER=1 yarn op:stake-delegate 1000000
+   ```
+
+The same two-phase flow applies to `redelegate`, `wrap`, `treasury`, and any
+other operation where the caller is a Safe. If the operation only reaches the
+approve phase, the script logs that the execute phase is still pending and does
+not emit a misleading "created"/"executed" message.
 
 ## Tests
 

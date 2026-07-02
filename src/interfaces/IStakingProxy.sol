@@ -27,4 +27,7 @@ interface IStakingProxy {
     function currentEpoch() external view returns (uint256);
     function currentEpochStartTimeInSeconds() external view returns (uint256);
     function epochDurationInSeconds() external view returns (uint256);
+
+    /// @notice Returns the id of the last staking pool that was created.
+    function lastPoolId() external view returns (bytes32);
 }

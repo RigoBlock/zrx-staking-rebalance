@@ -113,6 +113,7 @@ select op in \
   "delegate-equal" \
   "redelegate" \
   "wrap" \
+  "wrap-multi-delegate" \
   "treasury" \
   "quit"; do
 
@@ -160,6 +161,19 @@ select op in \
       ask_mode
       confirm
       run_op wrap-governance.sh "$mode"
+      break
+      ;;
+
+    wrap-multi-delegate)
+      local delegatees amounts
+      read -r -p "Delegatees (comma-separated addresses): " delegatees
+      read -r -p "Amounts (comma-separated, human readable): " amounts
+      export DELEGATEES="$delegatees"
+      export AMOUNTS="$amounts"
+      ask_signer
+      ask_mode
+      confirm
+      run_op wrap-governance-multi-delegate.sh
       break
       ;;
 

@@ -88,6 +88,7 @@ contract SafeExecutionTest is ZrxFixture {
         pools[0] = Constants.TARGET_POOL_31;
         pools[1] = Constants.TARGET_POOL_48;
 
+        uint256 zrxBefore = IERC20(Constants.ZRX_TOKEN).balanceOf(safe);
         stakeAndDelegate.run(safe, 100 ether, 100 ether, _poolsToCsv(pools));
 
         IStakingProxy.StoredBalance memory bal31 =
@@ -97,6 +98,7 @@ contract SafeExecutionTest is ZrxFixture {
 
         assertEq(bal31.nextEpochBalance, 50 ether, "pool 31 delegation");
         assertEq(bal48.nextEpochBalance, 50 ether, "pool 48 delegation");
+        assertEq(zrxBefore - IERC20(Constants.ZRX_TOKEN).balanceOf(safe), 100 ether, "ZRX spent");
     }
 
     function testSafeRedelegateAll() public {

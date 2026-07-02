@@ -28,6 +28,7 @@ contract StakeAndDelegate is Script {
     /// @param poolsCsv Comma-separated target pool ids. Empty string uses defaultTargetPools().
     function run(address staker, uint256 stakeAmount, uint256 delegateAmount, string memory poolsCsv) external {
         if (staker == address(0)) staker = Constants.DEFAULT_STAKER;
+        require(staker != address(0), "Invalid staker");
 
         _pools = LibStaking.parsePools(poolsCsv);
         require(_pools.length > 0, "Empty pool list");
