@@ -4,8 +4,10 @@ pragma solidity ^0.8.0;
 import {Script} from "forge-std/Script.sol";
 import {Constants} from "../src/constants/Constants.sol";
 import {LibSafeChild} from "../src/libraries/LibSafeChild.sol";
+import {LibSafe} from "../src/libraries/LibSafe.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IwZRX} from "../src/interfaces/IwZRX.sol";
+import {Call} from "../src/types/Types.sol";
 
 /**
  * @title WrapGovernanceMultiDelegate
@@ -15,6 +17,11 @@ import {IwZRX} from "../src/interfaces/IwZRX.sol";
  *         factory and are owned solely by the master Safe.
  */
 contract WrapGovernanceMultiDelegate is Script {
+    // Storage arrays keep the script flat and avoid stack-limit workarounds.
+    Call[] internal _calls;
+    address[] internal _childSafes;
+    uint256[] internal _balancesBefore;
+
     /// @notice Wrap and split across child Safes. Pass staker = address(0) to use the default staker.
     function run(address staker, address[] calldata delegatees, uint256[] calldata amounts) external {
         if (staker == address(0)) staker = Constants.DEFAULT_STAKER;
@@ -22,28 +29,82 @@ contract WrapGovernanceMultiDelegate is Script {
         _validate(delegatees, amounts);
         uint256 total = _total(amounts);
 
-        address[] memory childSafes = new address[](delegatees.length);
-        uint256[] memory balancesBefore = new uint256[](delegatees.length);
+        delete _childSafes;
+        delete _balancesBefore;
         for (uint256 i = 0; i < delegatees.length; i++) {
-            childSafes[i] = LibSafeChild.predictChildSafeAddress(staker, delegatees[i]);
-            balancesBefore[i] = IwZRX(Constants.WZRX_TOKEN).balanceOf(childSafes[i]);
+            address childSafe = LibSafeChild.predictChildSafeAddress(staker, delegatees[i]);
+            _childSafes.push(childSafe);
+            _balancesBefore.push(IwZRX(Constants.WZRX_TOKEN).balanceOf(childSafe));
         }
 
         uint256 zrxBefore = IERC20(Constants.ZRX_TOKEN).balanceOf(staker);
 
-        vm.startBroadcast(staker);
-        IERC20(Constants.ZRX_TOKEN).approve(Constants.WZRX_TOKEN, total);
-        for (uint256 i = 0; i < delegatees.length; i++) {
-            if (childSafes[i].code.length == 0) {
-                childSafes[i] = LibSafeChild.deployChildSafe(staker, delegatees[i]);
-            }
-            IwZRX(Constants.WZRX_TOKEN).depositFor(childSafes[i], amounts[i]);
-            LibSafeChild.approveAndExecDelegate(childSafes[i], delegatees[i], staker);
-        }
-        IERC20(Constants.ZRX_TOKEN).approve(Constants.WZRX_TOKEN, 0);
-        vm.stopBroadcast();
+        // Build all calls. If `staker` is a Safe these are batched through its
+        // `execTransaction`, so every inner call originates from the master Safe.
+        _calls.push(
+            Call({
+                target: Constants.ZRX_TOKEN,
+                value: 0,
+                data: abi.encodeWithSelector(IERC20.approve.selector, Constants.WZRX_TOKEN, total)
+            })
+        );
 
-        _verify(staker, childSafes, delegatees, amounts, balancesBefore, zrxBefore, total);
+        for (uint256 i = 0; i < delegatees.length; i++) {
+            _appendChildCalls(staker, delegatees[i], _childSafes[i], amounts[i]);
+        }
+
+        _calls.push(
+            Call({
+                target: Constants.ZRX_TOKEN,
+                value: 0,
+                data: abi.encodeWithSelector(IERC20.approve.selector, Constants.WZRX_TOKEN, 0)
+            })
+        );
+
+        bool executed = LibSafe.executeCalls(staker, _calls);
+        if (executed) {
+            _verify(staker, delegatees, amounts, zrxBefore, total);
+        }
+
+        _clearState();
+    }
+
+    function _appendChildCalls(address staker, address delegatee, address childSafe, uint256 amount)
+        private
+    {
+        if (childSafe.code.length == 0) {
+            _calls.push(
+                Call({
+                    target: Constants.SAFE_PROXY_FACTORY,
+                    value: 0,
+                    data: LibSafeChild.deployChildSafeCalldata(staker, delegatee)
+                })
+            );
+        }
+
+        _calls.push(
+            Call({
+                target: Constants.WZRX_TOKEN,
+                value: 0,
+                data: abi.encodeWithSelector(IwZRX.depositFor.selector, childSafe, amount)
+            })
+        );
+
+        _calls.push(
+            Call({
+                target: childSafe,
+                value: 0,
+                data: LibSafeChild.approveDelegateHashCalldata(childSafe, delegatee)
+            })
+        );
+
+        _calls.push(
+            Call({
+                target: childSafe,
+                value: 0,
+                data: LibSafeChild.execDelegateCalldata(childSafe, delegatee, staker)
+            })
+        );
     }
 
     function _validate(address[] calldata delegatees, uint256[] calldata amounts) private pure {
@@ -63,18 +124,17 @@ contract WrapGovernanceMultiDelegate is Script {
 
     function _verify(
         address staker,
-        address[] memory childSafes,
         address[] calldata delegatees,
         uint256[] calldata amounts,
-        uint256[] memory balancesBefore,
         uint256 zrxBefore,
         uint256 total
     ) private view {
-        for (uint256 i = 0; i < childSafes.length; i++) {
-            uint256 after_ = IwZRX(Constants.WZRX_TOKEN).balanceOf(childSafes[i]);
-            require(after_ - balancesBefore[i] == amounts[i], "WrapMulti: child Safe balance mismatch");
+        for (uint256 i = 0; i < _childSafes.length; i++) {
+            address childSafe = _childSafes[i];
+            uint256 after_ = IwZRX(Constants.WZRX_TOKEN).balanceOf(childSafe);
+            require(after_ - _balancesBefore[i] == amounts[i], "WrapMulti: child Safe balance mismatch");
             require(
-                IwZRX(Constants.WZRX_TOKEN).delegates(childSafes[i]) == delegatees[i],
+                IwZRX(Constants.WZRX_TOKEN).delegates(childSafe) == delegatees[i],
                 "WrapMulti: child Safe delegatee mismatch"
             );
         }
@@ -86,5 +146,11 @@ contract WrapGovernanceMultiDelegate is Script {
             IERC20(Constants.ZRX_TOKEN).allowance(staker, Constants.WZRX_TOKEN) == 0,
             "WrapMulti: allowance not reset"
         );
+    }
+
+    function _clearState() private {
+        delete _calls;
+        delete _childSafes;
+        delete _balancesBefore;
     }
 }

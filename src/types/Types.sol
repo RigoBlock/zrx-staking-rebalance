@@ -28,3 +28,9 @@ struct WrapState {
     uint256 wzrxBefore;
     address delegateeBefore;
 }
+
+struct Call {
+    address target;
+    uint256 value;
+    bytes data;
+}

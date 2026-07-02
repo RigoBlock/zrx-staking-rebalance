@@ -4,8 +4,9 @@ pragma solidity ^0.8.0;
 import {Script} from "forge-std/Script.sol";
 import {Constants} from "../src/constants/Constants.sol";
 import {LibStaking} from "../src/libraries/LibStaking.sol";
+import {LibSafe} from "../src/libraries/LibSafe.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
-import {RedelegateMode, Delegation} from "../src/types/Types.sol";
+import {RedelegateMode, Delegation, Call} from "../src/types/Types.sol";
 
 /**
  * @title Redelegate
@@ -13,6 +14,9 @@ import {RedelegateMode, Delegation} from "../src/types/Types.sol";
  */
 contract Redelegate is Script {
     uint256 internal constant MAX_POOL_ID = 100;
+
+    // Storage array for the single batched operation, keeping the script flat.
+    Call[] internal _calls;
 
     /// @notice Execute a redelegate operation for the given staker.
     /// @param mode Operation mode (undelegate-all, redelegate-all, redelegate-amount).
@@ -33,11 +37,21 @@ contract Redelegate is Script {
         (Delegation[] memory delegations, uint256 totalDelegated) =
             LibStaking.getActiveDelegations(Constants.STAKING_PROXY, staker, MAX_POOL_ID);
 
-        vm.startBroadcast(staker);
-        IStakingProxy(Constants.STAKING_PROXY).batchExecute(calls);
-        vm.stopBroadcast();
+        // Wrap the batched staking calls in a single operation. If `staker` is a
+        // Safe this is executed through `execTransaction`.
+        delete _calls;
+        _calls.push(
+            Call({
+                target: Constants.STAKING_PROXY,
+                value: 0,
+                data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, calls)
+            })
+        );
 
-        _verify(mode, staker, targetAmount, targetPoolIds, delegations, totalDelegated);
+        bool executed = LibSafe.executeCalls(staker, _calls);
+        if (executed) {
+            _verify(mode, staker, targetAmount, targetPoolIds, delegations, totalDelegated);
+        }
     }
 
     function _buildCalls(

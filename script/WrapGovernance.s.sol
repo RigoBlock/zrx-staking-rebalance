@@ -4,10 +4,11 @@ pragma solidity ^0.8.0;
 import {Script, console2} from "forge-std/Script.sol";
 import {Constants} from "../src/constants/Constants.sol";
 import {LibStaking} from "../src/libraries/LibStaking.sol";
+import {LibSafe} from "../src/libraries/LibSafe.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IwZRX} from "../src/interfaces/IwZRX.sol";
 import {IStakingProxy} from "../src/interfaces/IStakingProxy.sol";
-import {WrapGovernanceMode, Delegation, WrapState} from "../src/types/Types.sol";
+import {WrapGovernanceMode, Delegation, WrapState, Call} from "../src/types/Types.sol";
 
 /**
  * @title WrapGovernance
@@ -16,6 +17,10 @@ import {WrapGovernanceMode, Delegation, WrapState} from "../src/types/Types.sol"
 contract WrapGovernance is Script {
     uint256 internal constant MAX_POOL_ID = 100;
     uint8 internal constant UNDELEGATED = 0;
+
+    // Storage array lets the script build the operation in a flat, readable way
+    // without running into stack-depth limits.
+    Call[] internal _calls;
 
     /// @notice Wrap ZRX according to the selected mode.
     /// @param mode Operation mode (unstake, full, liquid, exclude-pools).
@@ -50,14 +55,22 @@ contract WrapGovernance is Script {
 
         uint256 zrxBefore = IERC20(Constants.ZRX_TOKEN).balanceOf(staker);
 
-        vm.startBroadcast(staker);
-        staking.unstake(unstakeAmount);
-        vm.stopBroadcast();
-
-        require(
-            IERC20(Constants.ZRX_TOKEN).balanceOf(staker) - zrxBefore == unstakeAmount,
-            "WrapGovernance: unstake did not increase ZRX balance"
+        delete _calls;
+        _calls.push(
+            Call({
+                target: Constants.STAKING_PROXY,
+                value: 0,
+                data: abi.encodeWithSelector(IStakingProxy.unstake.selector, unstakeAmount)
+            })
         );
+        bool executed = LibSafe.executeCalls(staker, _calls);
+
+        if (executed) {
+            require(
+                IERC20(Constants.ZRX_TOKEN).balanceOf(staker) - zrxBefore == unstakeAmount,
+                "WrapGovernance: unstake did not increase ZRX balance"
+            );
+        }
     }
 
     function _readWrapState(address staker) private view returns (WrapState memory state) {
@@ -71,11 +84,13 @@ contract WrapGovernance is Script {
         uint256 wrapAmount = IERC20(Constants.ZRX_TOKEN).balanceOf(staker);
         require(wrapAmount > 0, "no liquid ZRX");
 
-        vm.startBroadcast(staker);
-        _approveWrapDelegateReset(staker, delegatee, wrapAmount);
-        vm.stopBroadcast();
+        delete _calls;
+        _pushWrapDelegateCalls(staker, delegatee, wrapAmount);
 
-        _verifyWrap(staker, delegatee, wrapAmount, state.wzrxBefore);
+        bool executed = LibSafe.executeCalls(staker, _calls);
+        if (executed) {
+            _verifyWrap(staker, delegatee, wrapAmount, state.wzrxBefore);
+        }
     }
 
     function _wrapFull(address staker, address delegatee) private {
@@ -84,19 +99,39 @@ contract WrapGovernance is Script {
         require(delegations.length > 0, "no delegated stake");
         require(totalDelegated > 0, "no delegated stake");
 
-        bytes[] memory undelegateCalls = _buildUndelegateCalls(delegations);
         WrapState memory state = _readWrapState(staker);
 
-        vm.startBroadcast(staker);
-        IStakingProxy(Constants.STAKING_PROXY).batchExecute(undelegateCalls);
         _advanceEpoch();
-        IStakingProxy(Constants.STAKING_PROXY).endEpoch();
-        IStakingProxy(Constants.STAKING_PROXY).unstake(totalDelegated);
-        _approveWrapDelegateReset(staker, delegatee, totalDelegated);
-        vm.stopBroadcast();
 
-        _verifyWrap(staker, delegatee, totalDelegated, state.wzrxBefore);
-        _verifyActiveDelegation(staker, 0, "WrapGovernance: full wrap left active delegations");
+        delete _calls;
+        _calls.push(
+            Call({
+                target: Constants.STAKING_PROXY,
+                value: 0,
+                data: abi.encodeWithSelector(IStakingProxy.batchExecute.selector, _buildUndelegateCalls(delegations))
+            })
+        );
+        _calls.push(
+            Call({
+                target: Constants.STAKING_PROXY,
+                value: 0,
+                data: abi.encodeWithSelector(IStakingProxy.endEpoch.selector)
+            })
+        );
+        _calls.push(
+            Call({
+                target: Constants.STAKING_PROXY,
+                value: 0,
+                data: abi.encodeWithSelector(IStakingProxy.unstake.selector, totalDelegated)
+            })
+        );
+        _pushWrapDelegateCalls(staker, delegatee, totalDelegated);
+
+        bool executed = LibSafe.executeCalls(staker, _calls);
+        if (executed) {
+            _verifyWrap(staker, delegatee, totalDelegated, state.wzrxBefore);
+            _verifyActiveDelegation(staker, 0, "WrapGovernance: full wrap left active delegations");
+        }
     }
 
     function _wrapExcludePools(address staker, address delegatee, bytes32[] memory excludePoolIds) private {
@@ -113,26 +148,74 @@ contract WrapGovernance is Script {
         uint256 wrapAmount = totalDelegated - excludedTotal;
         require(wrapAmount > 0, "no stake to wrap");
 
-        bytes[] memory undelegateCalls = _buildExcludeUndelegateCalls(delegations, excludePoolIds, wrapAmount);
         WrapState memory state = _readWrapState(staker);
 
-        vm.startBroadcast(staker);
-        IStakingProxy(Constants.STAKING_PROXY).batchExecute(undelegateCalls);
         _advanceEpoch();
-        IStakingProxy(Constants.STAKING_PROXY).endEpoch();
-        IStakingProxy(Constants.STAKING_PROXY).unstake(wrapAmount);
-        _approveWrapDelegateReset(staker, delegatee, wrapAmount);
-        vm.stopBroadcast();
 
-        _verifyWrap(staker, delegatee, wrapAmount, state.wzrxBefore);
-        _verifyActiveDelegation(staker, totalDelegated - wrapAmount, "WrapGovernance: exclude-pools delegation mismatch");
+        delete _calls;
+        _calls.push(
+            Call({
+                target: Constants.STAKING_PROXY,
+                value: 0,
+                data: abi.encodeWithSelector(
+                    IStakingProxy.batchExecute.selector,
+                    _buildExcludeUndelegateCalls(delegations, excludePoolIds, wrapAmount)
+                )
+            })
+        );
+        _calls.push(
+            Call({
+                target: Constants.STAKING_PROXY,
+                value: 0,
+                data: abi.encodeWithSelector(IStakingProxy.endEpoch.selector)
+            })
+        );
+        _calls.push(
+            Call({
+                target: Constants.STAKING_PROXY,
+                value: 0,
+                data: abi.encodeWithSelector(IStakingProxy.unstake.selector, wrapAmount)
+            })
+        );
+        _pushWrapDelegateCalls(staker, delegatee, wrapAmount);
+
+        bool executed = LibSafe.executeCalls(staker, _calls);
+        if (executed) {
+            _verifyWrap(staker, delegatee, wrapAmount, state.wzrxBefore);
+            _verifyActiveDelegation(staker, totalDelegated - wrapAmount, "WrapGovernance: exclude-pools delegation mismatch");
+        }
     }
 
-    function _approveWrapDelegateReset(address staker, address delegatee, uint256 amount) private {
-        IERC20(Constants.ZRX_TOKEN).approve(Constants.WZRX_TOKEN, amount);
-        IwZRX(Constants.WZRX_TOKEN).depositFor(staker, amount);
-        IwZRX(Constants.WZRX_TOKEN).delegate(delegatee);
-        IERC20(Constants.ZRX_TOKEN).approve(Constants.WZRX_TOKEN, 0);
+    /// @notice Append the approve/depositFor/delegate/reset-approval sequence to `_calls`.
+    function _pushWrapDelegateCalls(address staker, address delegatee, uint256 amount) private {
+        _calls.push(
+            Call({
+                target: Constants.ZRX_TOKEN,
+                value: 0,
+                data: abi.encodeWithSelector(IERC20.approve.selector, Constants.WZRX_TOKEN, amount)
+            })
+        );
+        _calls.push(
+            Call({
+                target: Constants.WZRX_TOKEN,
+                value: 0,
+                data: abi.encodeWithSelector(IwZRX.depositFor.selector, staker, amount)
+            })
+        );
+        _calls.push(
+            Call({
+                target: Constants.WZRX_TOKEN,
+                value: 0,
+                data: abi.encodeWithSelector(IwZRX.delegate.selector, delegatee)
+            })
+        );
+        _calls.push(
+            Call({
+                target: Constants.ZRX_TOKEN,
+                value: 0,
+                data: abi.encodeWithSelector(IERC20.approve.selector, Constants.WZRX_TOKEN, 0)
+            })
+        );
     }
 
     function _advanceEpoch() private {
@@ -188,8 +271,8 @@ contract WrapGovernance is Script {
         require(amount <= sourceTotal, "amount exceeds source stake");
 
         Delegation[] memory sources = new Delegation[](sourceCount);
-        uint256[] memory weights = new uint256[](sourceCount);
         uint256 idx = 0;
+        uint256[] memory weights = new uint256[](sourceCount);
         for (uint256 i = 0; i < delegations.length; i++) {
             if (!_isExcluded(delegations[i].poolId, excludePoolIds)) {
                 sources[idx] = delegations[i];

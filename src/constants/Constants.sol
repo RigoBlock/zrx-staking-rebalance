@@ -22,6 +22,8 @@ library Constants {
     // Safe v1.3.0 infrastructure (mainnet).
     address public constant SAFE_SINGLETON = 0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552;
     address public constant SAFE_PROXY_FACTORY = 0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2;
+    // MultiSendCallOnly v1.3.0 — used to batch calls inside a single Safe transaction.
+    address public constant SAFE_MULTISEND_CALL_ONLY = 0x40A2aCCbd92BCA938b02010E17A5b8929b49130D;
 
     // Migration-related tokens
     address public constant POLYGON_MIGRATION = 0x29e7DF7b6A1B2b07b731457f499E1696c60E2C4e;

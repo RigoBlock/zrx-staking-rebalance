@@ -178,6 +178,83 @@ contract OperationsTest is ZrxFixture {
         }
     }
 
+    function testUndelegateAll() public {
+        _giveZrx(staker, 1000 ether);
+        vm.deal(staker, 10 ether);
+
+        bytes32[] memory seedPools = new bytes32[](1);
+        seedPools[0] = Constants.TARGET_POOL_31;
+        new StakeAndDelegate().run(staker, 500 ether, 500 ether, _poolsToCsv(seedPools));
+        _rollEpoch();
+
+        new Redelegate().run(RedelegateMode.UndelegateAll, staker, 0, "");
+
+        IStakingProxy.StoredBalance memory bal31 =
+            IStakingProxy(Constants.STAKING_PROXY).getStakeDelegatedToPoolByOwner(staker, Constants.TARGET_POOL_31);
+        assertEq(bal31.nextEpochBalance, 0, "pool 31 undelegated");
+    }
+
+    function testRedelegateAmountConsolidate() public {
+        _giveZrx(staker, 1000 ether);
+        vm.deal(staker, 10 ether);
+
+        // Seed a target and a non-target pool, then consolidate all stake into the targets.
+        bytes32[] memory seedPools = new bytes32[](2);
+        seedPools[0] = Constants.TARGET_POOL_31;
+        seedPools[1] = bytes32(uint256(1));
+        new StakeAndDelegate().run(staker, 800 ether, 800 ether, _poolsToCsv(seedPools));
+        _rollEpoch();
+
+        new Redelegate().run(RedelegateMode.RedelegateAmount, staker, 800 ether, _poolsToCsv(targetPools));
+
+        uint256 total = 0;
+        for (uint256 i = 0; i < targetPools.length; i++) {
+            total += IStakingProxy(Constants.STAKING_PROXY)
+                .getStakeDelegatedToPoolByOwner(staker, targetPools[i]).nextEpochBalance;
+        }
+        assertEq(total, 800 ether, "total target stake");
+    }
+
+    function testRedelegateAmountDecrease() public {
+        _giveZrx(staker, 1000 ether);
+        vm.deal(staker, 10 ether);
+
+        bytes32[] memory seedPools = new bytes32[](1);
+        seedPools[0] = Constants.TARGET_POOL_31;
+        new StakeAndDelegate().run(staker, 800 ether, 800 ether, _poolsToCsv(seedPools));
+        _rollEpoch();
+
+        new Redelegate().run(RedelegateMode.RedelegateAmount, staker, 500 ether, _poolsToCsv(targetPools));
+
+        uint256 total = 0;
+        for (uint256 i = 0; i < targetPools.length; i++) {
+            total += IStakingProxy(Constants.STAKING_PROXY)
+                .getStakeDelegatedToPoolByOwner(staker, targetPools[i]).nextEpochBalance;
+        }
+        assertEq(total, 500 ether, "total target stake");
+    }
+
+    function testUnstake() public {
+        _giveZrx(staker, 1000 ether);
+        vm.deal(staker, 10 ether);
+
+        // Create undelegated stake by staking directly.
+        vm.startPrank(staker);
+        IERC20(Constants.ZRX_TOKEN).approve(Constants.ERC20_PROXY, 500 ether);
+        IStakingProxy(Constants.STAKING_PROXY).stake(500 ether);
+        vm.stopPrank();
+
+        uint256 zrxBefore = IERC20(Constants.ZRX_TOKEN).balanceOf(staker);
+
+        new WrapGovernance().run(WrapGovernanceMode.Unstake, staker, delegatee, "");
+
+        assertEq(
+            IERC20(Constants.ZRX_TOKEN).balanceOf(staker) - zrxBefore,
+            500 ether,
+            "ZRX balance increased"
+        );
+    }
+
     function testSplitEqually() public pure {
         uint256[] memory parts = LibStaking.splitEqually(100 ether, 3);
         assertEq(parts[0], 33333333333333333334);
