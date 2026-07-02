@@ -11,7 +11,7 @@ For scripted usage you can also export `PRIVATE_KEY` yourself and call a shell
 wrapper directly:
 
 ```bash
-PRIVATE_KEY=0x... yarn op:stake-delegate 0x... 1000
+STAKER=0x... PRIVATE_KEY=0x... yarn op:stake-delegate 1000
 ```
 
 Hardware-wallet signers (`LEDGER=1`, `TREZOR=1`) and Foundry mnemonic accounts
@@ -39,7 +39,7 @@ verify the derived address and transaction details on the device screen.
 Every operation should be simulated before broadcast:
 
 ```bash
-yarn op:sim:stake-delegate 0x... 1000
+STAKER=0x... yarn op:sim:stake-delegate 1000
 ```
 
 The `op:sim:*` scripts omit `--broadcast`, so Foundry runs the script locally
