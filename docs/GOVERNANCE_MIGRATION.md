@@ -1,14 +1,14 @@
 # Governance Migration
 
 The new 0x governance model uses a wrapped ZRX token (`wZRX`) that delegates
-voting power to a chosen address. This project provides three migration paths.
+voting power to a chosen address. This project provides five migration paths.
 
 ## 1. Full legacy-stake migration (`wrap full`)
 
 For ZRX that is currently staked/delegated in the legacy 0x staking system:
 
 ```bash
-yarn op:wrap full <staker> <delegatee> <amount>
+STAKER=0x... DELEGATEE=0x... yarn op:wrap:full
 ```
 
 Or interactively:
@@ -26,10 +26,11 @@ The script performs:
    `wZRX.depositFor(staker, amount)`, `wZRX.delegate(delegatee)`, and reset the
    ZRX approval.
 
-Simulate first:
+`amount` is determined on-chain — the full delegated stake is wrapped. Simulate
+first:
 
 ```bash
-yarn op:sim:wrap full <staker> <delegatee> <amount>
+STAKER=0x... DELEGATEE=0x... yarn op:sim:wrap:full
 ```
 
 ## 2. Liquid-only wrap (`wrap liquid`)
@@ -37,7 +38,7 @@ yarn op:sim:wrap full <staker> <delegatee> <amount>
 If the ZRX is already unstaked and sitting in the wallet as ERC-20 balance:
 
 ```bash
-yarn op:wrap liquid <staker> <delegatee> <amount>
+STAKER=0x... DELEGATEE=0x... yarn op:wrap:liquid
 ```
 
 This only performs:
@@ -47,18 +48,27 @@ This only performs:
 3. `wZRX.delegate(delegatee)`
 4. `approve(ZRX, wZRX, 0)`
 
+`amount` is the full liquid ZRX balance. Simulate first:
+
+```bash
+STAKER=0x... DELEGATEE=0x... yarn op:sim:wrap:liquid
+```
+
 ## 3. Exclude-pools wrap (`wrap exclude-pools`)
 
 To keep some pools delegated while moving the rest to wZRX:
 
 ```bash
-yarn op:wrap exclude-pools <staker> <delegatee> <amount> \
-  <pool-to-exclude>...
+STAKER=0x... DELEGATEE=0x... yarn op:wrap:exclude-pools "0x31,0x48"
 ```
 
 The script undelegates from every pool except the excluded ones, advances the
 epoch, calls `endEpoch()`, unstakes the requested amount, then wraps and
-delegates it.
+delegates it. Pools are passed as one comma-separated string. Simulate first:
+
+```bash
+STAKER=0x... DELEGATEE=0x... yarn op:sim:wrap:exclude-pools "0x31,0x48"
+```
 
 ## 4. Multi-delegate wrap (`wrap multi-delegate`)
 
@@ -93,7 +103,7 @@ at `0x4822cfc1e7699bdb9551bdfd3a838ee414bc2008`), the voting delegate first
 proposes:
 
 ```bash
-yarn op:treasury propose <proposer> [<operated-pool>...]
+PROPOSER=0x... yarn op:treasury:propose "0x31,0x48"
 ```
 
 This creates a ZrxTreasury proposal whose actions move:
@@ -106,11 +116,17 @@ This creates a ZrxTreasury proposal whose actions move:
 After the proposal passes and reaches its execution epoch, run:
 
 ```bash
-yarn op:treasury execute <proposer> <proposalId>
+PROPOSER=0x... yarn op:treasury:execute <proposalId>
 ```
 
 The voting delegate acting as proposer must have at least `proposalThreshold`
 voting power in the old treasury. Pass any operated pools when proposing.
+Simulate first:
+
+```bash
+PROPOSER=0x... yarn op:sim:treasury:propose "0x31,0x48"
+PROPOSER=0x... yarn op:sim:treasury:execute <proposalId>
+```
 
 ## Safe multisig workflow
 

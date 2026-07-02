@@ -20,6 +20,7 @@ sh/                       # Bash wrappers and the interactive runner
   common.sh               # Shared shell helpers
   op.sh                   # Interactive runner
   run-forge.sh            # Low-level forge script wrapper
+  install-foundry-deps.sh # Update git submodules
   stake-and-delegate.sh
   delegate-equal.sh
   redelegate.sh
@@ -29,11 +30,13 @@ sh/                       # Bash wrappers and the interactive runner
 src/
   interfaces/             # Minimal Solidity contract interfaces
   constants/Constants.sol # Mainnet addresses and target pool ids
-  libraries/              # Shared helpers (LibStaking, LibSafeChild)
+  libraries/              # Shared helpers (LibStaking, LibSafe, LibSafeChild)
+  types/Types.sol         # Common structs and enums
 test/
   Fixtures.sol            # Common test setup helpers
   Operations.t.sol        # Foundry fork tests (direct script execution)
-  SafeExecution.t.sol     # Foundry fork tests (execute from the Safe address)
+  SafeExecution.t.sol     # Foundry fork tests through real Safe approveHash/execTransaction
+  TreasuryMigration.t.sol # Foundry fork tests for treasury proposal creation
 ```
 
 `WrapGovernanceMultiDelegate` wraps ZRX into wZRX and splits it across
@@ -118,11 +121,11 @@ Each operation has two package scripts:
 Foundry scripts simulate by default and only broadcast when `--broadcast` is
 passed, so `op:sim:*` is the same script without that flag.
 
-The Solidity scripts are self-contained: the staker, delegatee, and target pools
-are read from `src/constants/Constants.sol` (`DEFAULT_STAKER`,
-`DEFAULT_DELEGATEE`, `LibStaking.defaultTargetPools()`). They do not accept
-addresses or pool ids as input parameters, so the shell wrappers and package
-scripts only forward amounts or mode-specific IDs when needed.
+The Solidity scripts default the staker, delegatee, and target pools from
+`src/constants/Constants.sol` (`DEFAULT_STAKER`, `DEFAULT_DELEGATEE`,
+`LibStaking.defaultTargetPools()`). The shell wrappers and interactive runner
+let you override these via environment variables, so day-to-day usage rarely
+needs to pass them explicitly.
 
 Zero-argument examples:
 
